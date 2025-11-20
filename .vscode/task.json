@@ -1,0 +1,10 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "myShellCmd", 
+            "type": "shell",      
+            "command":"echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope" 
+        }
+    ]
+}

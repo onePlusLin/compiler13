@@ -1,0 +1,4 @@
+找不到命令 “ython”，您的意思是：
+  “cython” 命令来自 Debian 软件包 cython (0.29.14-0.1ubuntu3)
+  “jython” 命令来自 Debian 软件包 jython (2.7.2+repack1-4)
+尝试 apt install <deb name>

@@ -1,0 +1,142 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Debug with tvm13 (Py3.8)",
+            "type": "debugpy",
+            "python": "/home/linzejia/anaconda3/envs/tvm13/bin/python",
+            "request": "launch",                // 请求类型："启动"一个新的进程来调试
+            "program": "${file}",               // 要调试的程序：当前在编辑器里打开的文件
+            "console": "integratedTerminal",    // 在 VS Code 集成的终端里运行
+            "justMyCode": true,                 // 只调试用户代码，跳过库代码
+            // "preLaunchTask": "myShellCmd",   // ⭐ **关键点**：在启动调试前，先执行一个名为 "myShellCmd" 的任务
+            "env": {
+                "LD_LIBRARY_PATH": "/home/linzejia/anaconda3/envs/tvm13/lib"
+            }
+        },
+        //"Attach-TVM":将 C++ 调试器（LLDB）附加到 已经在运行 的进程上
+        // {
+        //     "type": "lldb",             // 调试器类型：是 LLDB (一个 C++ 调试器，类似于 GDB)
+        //     "request": "attach",        // 请求类型："附加"到一个已存在的进程
+        //     "name": "Attach-TVM",
+        //     // ⭐ **关键点**：要附加的进程ID (Process ID)。`${command:pickMyProcess}` 会弹出一个列表，让你从当前运行的进程中选择一个。
+        //     "pid": "${command:pickMyProcess}"
+            
+        // }
+        {
+            "name": "C++/Python Hybrid Launch (No Sudo)",
+            "type": "lldb", // 或者 "cppdbg" 如果你更习惯使用 GDB
+            "request": "launch",
+            "program": "/home/linzejia/anaconda3/envs/tvm13/bin/python", // 🔴【重要】请务必将这里修改为你自己的 Python 解释器绝对路径！
+            "args": [
+                "${file}"                                                // 将当前打开的 Python 文件作为参数
+            ],
+            "cwd": "${workspaceFolder}",                                 // 设置工作目录为项目根目录
+            "stopOnEntry": false                                         // 启动后不要停在程序入口，直接运行直到遇到断点
+        },
+        {
+            "name": "Debug TVM via Python (gdb)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "/home/linzejia/anaconda3/envs/tvm13/bin/python",
+            "args": ["/home/linzejia/app/tvm/apache-tvm-src-v0.13.0/aMyEork/debug.py"],
+            "cwd": "/home/linzejia/app/tvm/apache-tvm-src-v0.13.0",
+            "stopAtEntry": false,
+            "environment": [
+              {
+                "name": "LD_LIBRARY_PATH",
+                "value": "/home/linzejia/app/tvm/apache-tvm-src-v0.13.0/build:${env:LD_LIBRARY_PATH}"
+              }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "setupCommands": [
+              {
+                "description": "Enable pretty-printing for gdb",
+                "text": "-enable-pretty-printing",
+                "ignoreFailures": true
+              },
+              {
+                "description": "Set shared library search path",
+                "text": "set solib-search-path /home/linzejia/app/tvm/apache-tvm-src-v0.13.0/build",
+                "ignoreFailures": true
+              }
+            ],
+            "logging": {
+                "enginerLogging":false
+            }
+        }       
+    ] 
+}
+
+
+
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "[1] (GDB) 启动等待调试的Python",
+//             "type": "cppdbg",
+//             "request": "launch",
+
+//             // --- vvv C++ 调试器配置 vvv ---
+//             // 1. 必须修改这里！填入你的 Python 解释器的【绝对路径】
+//             "program": "/home/linzejia/anaconda3/envs/tvm13/bin/python",
+            
+//             // 2. 这是启动 Python 调试服务的关键
+//             "args": [
+//                 "-m", "debugpy",
+//                 "--listen", "8888",
+//                 "--wait-for-client",
+//                 "${file}" // 你的入口脚本
+//             ],
+//             // --- ^^^ C++ 调试器配置 ^^^ ---
+            
+//             "stopAtEntry": false,
+//             "cwd": "${workspaceFolder}",
+//             "environment": [],
+//             "externalConsole": false,
+//             "MIMode": "gdb",
+//             "setupCommands": [
+//                 {
+//                     "description": "为 gdb 启用整齐打印",
+//                     "text": "-enable-pretty-printing",
+//                     "ignoreFailures": true
+//                 }
+//             ]
+//         },
+//         {
+//             "name": "[2] (Python) 连接到正在等待的脚本",
+//             "type": "debugpy",
+//             "request": "attach",
+
+//             // --- vvv Python 调试器配置 vvv ---
+//             "connect": {
+//                 "host": "localhost",
+//                 "port": 8888 // 必须和上面 "listen" 的端口号一致
+//             },
+//             // --- ^^^ Python 调试器配置 ^^^ ---
+
+//             "pathMappings": [
+//                 {
+//                     "localRoot": "${workspaceFolder}",
+//                     "remoteRoot": "${workspaceFolder}"
+//                 }
+//             ],
+//             "justMyCode": false
+//         }
+//     ],
+//     "compounds": [
+//         {
+//             "name": "【启动这个】混合调试 (无Sudo)",
+//             "configurations": [
+//                 "[1] (GDB) 启动等待调试的Python",
+//                 "[2] (Python) 连接到正在等待的脚本"
+//             ]
+//         }
+//     ]
+// }

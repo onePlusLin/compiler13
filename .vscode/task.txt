@@ -1,0 +1,17 @@
+// {
+//     "files.associations": {
+//         "*.tcc": "cpp",
+//         "memory_resource": "cpp"
+//     }
+// }
+
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "myShellCmd", // 任务的名字，与 launch.json 中的 preLaunchTask 对应
+            "type": "shell",       // 任务类型：执行一个 shell 命令
+            "command":"echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope" // ⭐ **核心命令**
+        }
+    ]
+}
