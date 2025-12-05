@@ -777,21 +777,17 @@ class BinaryElementwiseRewriter(DFPatternCallback):
         from tvm.relay.backend.contrib.ethosu.legalize import MulRewriter,myMulRewriter
         if isinstance(self, MulRewriter):
             print("\n<><><><><><><><>BinaryElementwiseRewriter<><><><><><><><><><><><><><><>")
-            print("BinaryElementwiseRewriter HERE: callback 正由 MulRewriter 实例执行！") # 不知道为什么这个mulrewrite是被执行了72次，但是实际上应该75次才对
+            print("BinaryElementwiseRewriter HERE: callback 正由 MulRewriter 实例执行！") 
             print("BinaryElementwiseRewriter 参数的长度:\n",len(post.args))
-            print("zedebug!!!BinaryElementwiseRewriter: params:\n",params)
-            print("zedebug!!!BinaryElementwiseRewriter:post.args[0]:\n",post.args[0])
-            print("zedebug!!!BinaryElementwiseRewriter:post.args[1]:\n",post.args[1])
+
         
         if isinstance(self, myMulRewriter):
             print("这是一个只有一个输入参数的mul")
             print("BinaryElementwiseRewriter 参数的长度:\n",len(post.args))
-            print("zedebug!!!BinaryElementwiseRewriter: params:\n",params)
-            print("zedebug!!!BinaryElementwiseRewriter:post.args[0]:\n",post.args[0])
             params.ifm.tensor = post.args[0]
             params.ifm2.tensor = relay.copy(post.args[0])
         else:
-        
+            # post.args[0] 是小标量，post.args[1] 是大图。
             # True if IFM2 is the first operand and IFM is the second operand
             params.ifm.tensor = post.args[1] if params.reversed_operands else post.args[0]
             # ifm2 必须是可广播输，如果可广播则reversed_operands为false，否则要进行反转

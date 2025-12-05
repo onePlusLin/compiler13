@@ -14,10 +14,6 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-'''
-负责将 Relay 函数 lowering 为 TIR（Tensor Intermediate Representation），
-并针对 Ethos-U 的硬件架构（如计算单元、内存层次）生成初步的 TIR 代码。
-'''
 """Codegen for Arm(R) Ethos(TM)-U NPU"""
 from collections import defaultdict
 from typing import List, Callable
@@ -28,11 +24,11 @@ from tvm import relay
 from tvm.relay.backend.contrib.ethosu.tir.compiler import LowerToTIR
 from tvm.relay.backend.contrib.ethosu.tir.scheduler import copy_constants
 from tvm.contrib.ethosu.cascader import (
-    cascade,            # 主要的调度函数，实现"级联"技术
-    EthosuDeviceConfig, # 存储Ethos-U设备的配置信息
-    CascaderOptions,    # 级联调度器的配置选项
-    MemoryRegion,       # 表示内存区域信息
-    extract_memory_info,# 从内存池中提取内存信息的工具函数
+    cascade,
+    EthosuDeviceConfig,
+    CascaderOptions,
+    MemoryRegion,
+    extract_memory_info,
 )
 from tvm.relay.backend.contrib.ethosu.legalize import LegalizeEthosU
 from tvm.relay.backend.contrib.ethosu import tir_to_cs_translator, util, vela_api
@@ -42,18 +38,27 @@ from tvm.relay.expr_functor import ExprMutator, ExprVisitor
 from tvm.relay.backend.contrib.ethosu.op import op_attrs
 from tvm.relay.backend.contrib.ethosu import op
 
+
 from . import _ffi_api
 
-# 爷爷是Relay 中用于遍历和处理表达式（Expr）的抽象基类ExprFunctor 
-# Expr（Relay 的表达式节点，如 Call、Function 等）
+
+class ExprCounter(ExprVisitor):
+    def __init__(self):
+        super().__init__()
+        self.count = {}
+
+    def visit(self, expr):
+        # 统计当前表达式的出现次数
+        if expr in self.count:
+            self.count[expr] += 1
+        else:
+            self.count[expr] = 1
+        super().visit(expr)
+
 class OptimizeLUTs(ExprMutator):
     """A pass to merge an identity operator with a LUT based activation function with
     a preceding operator provided that operator can do a table lookup for the activation
-    in the hardware
-    这个pass可以合并一个带有基于LUT的激活函数的identity操作符与前面的操作符，前提是该操作符可以在硬件中进行激活的查找表。
-    identity operator 是什么？ 一个占位符吧  contrib.ethosu.identity
-    Arm Ethos-U NPU 的硬件设计决定了，激活函数（如 ReLU, Tanh, Sigmoid）不能独立执行。它必须作为另一个主操作（如卷积、加法、池化）的一个附加步骤，在硬件层面被融合执行。
-    """
+    in the hardware"""
 
     def __init__(self):
         super().__init__()
@@ -63,11 +68,10 @@ class OptimizeLUTs(ExprMutator):
             "contrib.ethosu.pooling": op.ethosu_pooling,
             "contrib.ethosu.binary_elementwise": op.ethosu_binary_elementwise,
         }
+        self.expr_count = None
 
     def create_op_with_lut(self, call):
-        """
-        将contrib.ethosu.identity的op（第一个参数-上游节点）和携带的LUTtiqu1,创造一个op，到列表尾
-        Extract the parameters and attributes from the NPU operator and create
+        """Extract the parameters and attributes from the NPU operator and create
         a new operator with LUT.
 
         Parameters
@@ -81,10 +85,8 @@ class OptimizeLUTs(ExprMutator):
             The new operator with LUT.
         """
         identity = call
- 
         ethosu_op = call.args[0]
-        lut = identity.args[1] #  LUT 数据 (查找表参数)
-        
+        lut = identity.args[1]
         activation = identity.attrs.activation
 
         new_attrs = dict(ethosu_op.attrs)
@@ -94,19 +96,19 @@ class OptimizeLUTs(ExprMutator):
         new_args = ethosu_op.args[:-1] + [lut]
         assert ethosu_op.op.name in self.lut_ops.keys()
 
-        # 构造新的算子调用
         return self.lut_ops[ethosu_op.op.name](*new_args, **new_attrs)
 
 
-# func :<class 'tvm.relay.function.Function'> func在遍历整个图的时候好像会将图转为一个expr,从而可以访问callnode，在继承的visit中转换
+    def visit_function(self, func):
+        counter = ExprCounter()
+        counter.visit(func.body)
+        self.expr_count = counter.count
+        return super().visit_function(func)
+    
     def visit_call(self, call: tvm.relay.expr.Call) -> tvm.relay.expr.Call:
         """Recursively visit call nodes in the input graph and if an ethosu.identity
         operator with LUT is found and the preceding operator has a LUT attribute, create
         a new NPU operator.
-        
-        递归地访问输入图中的调用节点，如果找到带有查找表（LUT）的 ethosu.identity 操作符且其前一个操作符是（lut_ops），本call有激活属性
-        ，则创建一个新的 NPU 操作符。
-        identity 的核心作用，是作为一个软件层面的占位符（Placeholder），来表示一个独立的激活函数。
 
         Parameters
         ----------
@@ -121,35 +123,41 @@ class OptimizeLUTs(ExprMutator):
         """
         new_call = call
         lut_activations = ["TANH", "LUT", "SIGMOID"]
-        
-        if isinstance(call.op, tvm.ir.Op) and isinstance(call.args[0], tvm.relay.expr.Call):
 
-            producer_op = call.args[0] # 生产者节点，输入的第一个节点
+        if isinstance(call.op, tvm.ir.Op) and len(call.args) and isinstance(call.args[0], tvm.relay.expr.Call):
+            producer_op = call.args[0]
 
             # Check if the producer can do a LUT operation
-            # 如果这个call节点的上游节点符合条件，当前call节点是不是identity，该算子的属性（配置参数）activation是LUT激活函数，则可以被创造一个LUTop
             if (
-                producer_op.op.name in self.lut_ops.keys()     # bug for yolov5s.tflite
+                producer_op.op.name in self.lut_ops.keys()
                 and call.op.name == "contrib.ethosu.identity"
                 and call.attrs.activation in lut_activations
             ):
-                # Check the producer doesn't already have a LUT
-                has_lut = producer_op.attrs.activation in lut_activations
-                if not has_lut:
-                    new_call = self.create_op_with_lut(call)
+                # form mao
+                if 0:
+                    # Check the producer doesn't already have a LUT
+                    has_lut = producer_op.attrs.activation in lut_activations
+                    if not has_lut:
+                        new_call = self.create_op_with_lut(call)
+                else:      
+                    producer_ref_count = self.expr_count.get(producer_op, 0)
+                    if producer_ref_count <= 1:
+                        has_lut = producer_op.attrs.activation in lut_activations
+                        #输入节点没有融合lut
+                        if not has_lut:
+                            new_call = self.create_op_with_lut(call)
+                    else:
+                        #identity support lut, no need process
+                        pass
 
-        # 递归处理输入节点
         new_call = super().visit_call(new_call)
 
         return new_call
 
-# 装饰器的作用是将这个类注册为一个 Relay pass，从而可以直接使用优化（需要实现transform_npu_function函数）
-# 这个装饰器会找到所有被标记为ethosu的函数，然后调用transform_npu_function,所以fn不是全部的mod，而是全部npn函数
+
 @util.create_npu_function_pass(opt_level=1)
 class LUTsOptimizer:
-    """Register LUTsOptimizer as a relay pass.
-        优化和合并专用于NPU的LUTs
-    """
+    """Register LUTsOptimizer as a relay pass."""
 
     def transform_npu_function(self, _, func: relay.Function) -> relay.Function:
         """Visit relay nodes in the given NPU function.
@@ -164,11 +172,8 @@ class LUTsOptimizer:
         mod : tvm.IRModule
             New module with optimized LUTs.
         """
-        print("ZEdebug:class LUTsOptimizer:ir-codegen.py, func type:\n",type(func))
-        print("func 是整一个model吗？:\n",func) #在outline之后，npu函数会被分离出来，一般就是一个计算图！
-        return OptimizeLUTs().visit(func) 
+        return OptimizeLUTs().visit(func)
 
-    # 使得类的实例可以像函数一样被调用
     def __call__(self, *args, **kwargs):
         pass
 
@@ -177,7 +182,6 @@ class AnalyzeConsumers(ExprVisitor):
     """Traverses the graph to determine consumers that are NPU operations and
     which have restrictions to use NHCWB16 layout. The result is maintained in
     `npu_consumers` and `restrictions`.
-    编译图确定哪些消费者是NPU op，并检查哪些被限制转为NHCW
 
     Attributes
     ----------
@@ -280,7 +284,6 @@ class LayoutOptimization(ExprMutator):
 
         def are_all_consumers_npu(call):
             """
-            检查一个节点的消费者节点是不是全是
             Check whether or not each consumer is an NPU operation.
             Parameters
             ----------
@@ -325,10 +328,9 @@ class LayoutOptimization(ExprMutator):
             input_count += 1
             if arg not in self.npu_consumers:
                 continue
-            parent_has_brick_output = are_all_consumers_npu(arg) # 父母就是指上游即输入吧？
+            parent_has_brick_output = are_all_consumers_npu(arg)
             parent_has_restrictions = check_restrictions(arg)
             if parent_has_brick_output and not parent_has_restrictions:
-                 # 父节点已经将输出优化为 NHCWB16，所以当前节点可以接受这种布局
                 layout_string = "ifm_layout" if input_count <= 1 else f"ifm{input_count}_layout"
                 new_attrs[layout_string] = "NHCWB16"
 
@@ -402,9 +404,7 @@ def IdentityOptimizer():  # pylint: disable=invalid-name
 
 
 def OutlineCompilerFunctions(compiler_name):  # pylint: disable=invalid-name
-    """
-    描绘出给定名字的编译器的函数的pass
-    Pass that outlines functions given a named Compiler attribute.
+    """Pass that outlines functions given a named Compiler attribute.
 
     Parameters
     ----------
@@ -416,7 +416,7 @@ def OutlineCompilerFunctions(compiler_name):  # pylint: disable=invalid-name
     Pass
         The module pass.
     """
-    return _ffi_api.OutlineCompilerFunctions(compiler_name)# 调用C++后端 "relay._transform.OutlineCompilerFunctions"
+    return _ffi_api.OutlineCompilerFunctions(compiler_name)
 
 
 @tvm._ffi.register_func("relay.ext.ethos-u.constant_updater")
@@ -516,7 +516,7 @@ def _calculate_memory_pressure(mod: tvm.ir.IRModule) -> int:
 
 
 @tvm._ffi.register_func("relay.ext.ethos-u.relay_to_tir")
-def relay_to_tir(mod: tvm.ir.IRModule) -> tvm.ir.IRModule:# 处理外部函数-external functions
+def relay_to_tir(mod: tvm.ir.IRModule) -> tvm.ir.IRModule:
     """
     This is the hook for python-based lowering of a Relay module which lowers NPU
     external functions to TIR.
@@ -531,46 +531,16 @@ def relay_to_tir(mod: tvm.ir.IRModule) -> tvm.ir.IRModule:# 处理外部函数-e
     mod : tvm.ir.IRModule
         The Relay module with scheduled NPU external functions.
     """
-    
-    
-    print("ZEdebug:fun-relay_to_tir-codegen.py,!!! before !!! mod:\n")
-    print(mod)
     mod = OutlineCompilerFunctions("ethos-u")(mod)
-    '''
-    工厂模式：
-    OutlineCompilerFunctions("ethos-u") 返回一个 pass 对象
-    然后这个 pass 对象被调用，传入 mod
-    '''
-    print("ZEdebug:fun-relay_to_tir-codegen.py,!!! after OutlineCompilerFunctions !!! mod:\n")
-    print(mod)
-    
-    print("--------------LegalizeEthosU start---------------") 
+    print("after OutlineCompilerFunctions,mod:\n",mod)
     mod = LegalizeEthosU()(mod)
-    print("ZEdebug:fun-relay_to_tir-codegen.py,!!! after LegalizeEthosU !!! mod:\n")
-    print(mod)
-    print("mod type:\n",type(mod))
-    
-    
-    mod = LUTsOptimizer()(mod)      # bug yolov5s-int8.tflite
-    print("ZEdebug:fun-relay_to_tir-codegen.py,!!! after LUTsOptimizer !!! mod:\n")
-    print(mod)
-    
-    
+    print("after LegalizeEthosU,mod:\n",mod)
+    mod = LUTsOptimizer()(mod)
+    print("after LUTsOptimizer,mod:\n",mod)
     mod = relay.transform.InferType()(mod)
-    print("ZEdebug:fun-relay_to_tir-codegen.py,!!! after InferType !!! mod:\n")
-    print(mod)
-    
     mod = IdentityOptimizer()(mod)
-    print("ZEdebug:fun-relay_to_tir-codegen.py,!!! after IdentityOptimizer !!! mod:\n")
-    print(mod)
-    
     mod = LayoutOptimizer()(mod)
-    print("ZEdebug:fun-relay_to_tir-codegen.py,!!! after LayoutOptimizer !!! mod:\n")
-    print(mod)
-    
     mod = relay.transform.InferType()(mod)
-    print("ZEdebug:fun-relay_to_tir-codegen.py,!!! after InferType !!! mod:\n")
-    print(mod)
 
     device_contexts = {
         gv: "ethos-u" for gv, _ in filter(lambda x: util.is_npu_func(x[1]), mod.functions.items())
@@ -594,11 +564,8 @@ def relay_to_tir(mod: tvm.ir.IRModule) -> tvm.ir.IRModule:# 处理外部函数-e
         sram = extract_memory_info(workspace_memory_pools.pools[0], memory_pressure)
         tir_mod = LowerToTIR(_ethos_u55_cascader(sram, util.is_striping_enabled()))(mod)
     else:
-        scheduler = None if util.is_copying_constants_disabled() else copy_constants() # copy_constants
-        tir_mod = LowerToTIR(scheduler)(mod) 
-        
-    print("ZEdebug:fun-relay_to_tir-codegen.py,!!! after !!!tir_mod:\n")
-    print(tir_mod)
+        scheduler = None if util.is_copying_constants_disabled() else copy_constants()
+        tir_mod = LowerToTIR(scheduler)(mod)
 
     return tir_mod
 
@@ -621,25 +588,14 @@ def primfunc_to_artifact(primfunc: tvm.tir.PrimFunc) -> util.CompilationArtifact
         This is a structure that holds the binary artifacts
         for the microNPU
     """
-    print("ZEdebug:fun-primfunc_to_artifact-codegen.py,!!! before !!! primfunc:\n",primfunc)
-    # 提取函数符号和常量
-    symbol = str(primfunc.attrs["global_symbol"])       # "global_symbol": "tvmgen_default_tvmgen_default_ethos_u_main_0"
-    const_dict = primfunc.attrs["ethos-u.constants"]    # attr = {"ethos-u.constants": meta[Map][0],,,属性里面的常量，使用的是runtime.NDArray存储的
-    
-    # 创建一个新的TIR模块，并将PrimFunc添加到模块中
+    symbol = str(primfunc.attrs["global_symbol"])
+    const_dict = primfunc.attrs["ethos-u.constants"]
     tir_mod = tvm.IRModule()
     tir_mod[symbol] = primfunc
-    
-    print("ZEdebug:fun-primfunc_to_artifact-codegen.py,!!! before !!! tir_mod:\n",tir_mod)
 
-    # 将常量字典中的数据从TVM的NDArray格式转换为NumPy数组格式
     const_dict_np = dict()
     for buffer_var in const_dict.keys():
         const_dict_np[buffer_var] = const_dict[buffer_var].numpy()
 
-    # 将 tir_mod 转换成 cms（command stream）
-    # cmms: 命令流（command stream）的十六进制字符串
-    # encoded_constants: 编码后的常量数据（权重、偏置等）
-    # base_addresses: 基地址信息列表
     cmms, encoded_constants, base_addresses = tir_to_cs_translator.translate(tir_mod, const_dict_np)
     return util.CompilationArtifact(symbol, cmms, encoded_constants, base_addresses)

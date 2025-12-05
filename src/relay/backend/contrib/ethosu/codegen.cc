@@ -56,7 +56,7 @@ namespace tvm {
           public:
           explicit OutlineCompilerFunctionsMutator(const IRModule& mod, const std::string& compiler_name)
             : mod_(mod), compiler_name_(compiler_name) {
-            }
+          }
 
           Expr VisitExpr_(const LetNode* op) final {
             auto pre_visit = [this](const LetNode* op) {
@@ -66,7 +66,7 @@ namespace tvm {
               // Outlineable function no longer needs let binding
               if (this->CanOutlineExpr(value)) {
                 this->memo_[var] = value;
-                }
+              }
               };
             auto post_visit = [this](const LetNode* op) {
               // Rely on the Memoizer to cache pre-visit values
@@ -77,20 +77,20 @@ namespace tvm {
               // Drop the let binding
               if (this->CanOutlineExpr(value)) {
                 this->memo_[expr] = this->VisitExpr(op->body);
-                }
+              }
               else {
                 Var var = Downcast<Var>(this->VisitExpr(op->var));
                 if (var.same_as(op->var) && value.same_as(op->value) && body.same_as(op->body)) {
                   this->memo_[expr] = expr;
-                  }
+                }
                 else {
                   this->memo_[expr] = Let(var, value, body);
-                  }
                 }
+              }
               };
             ExpandANormalForm(op, pre_visit, post_visit);
             return memo_[GetRef<Expr>(op)];
-            }
+          }
 
           Expr Rewrite_(const CallNode* pre, const Expr& post) override {
             Call call = Downcast<Call>(post);
@@ -102,12 +102,12 @@ namespace tvm {
               GlobalVar gv(gv_name);
               if (func->checked_type_.defined()) {
                 gv->checked_type_ = func->checked_type();
-                }
+              }
               mod_->Update(gv, func);
               return Call(gv, call->args, call->attrs, call->type_args);
-              }
-            return post;
             }
+            return post;
+          }
 
           private:
           /*!
@@ -120,23 +120,23 @@ namespace tvm {
           bool CanOutlineExpr(const Expr& expr) {
             if (!expr->IsInstance<FunctionNode>()) {
               return false;
-              }
+            }
             Function func = Downcast<Function>(expr);
             auto compiler = func->GetAttr<String>(attr::kCompiler);
             if (!compiler.defined()) {
               return false;
-              }
+            }
             if (compiler != compiler_name_) {
               return false;
-              }
-            return true;
             }
+            return true;
+          }
 
           /*! \brief The module that the pass will run on. */
           IRModule mod_;
           /*! \brief The name of the compiler to enable outlining on external functions for. */
           std::string compiler_name_;
-          };
+        };
 
         /*!
          * \brief A pass to outline compiler specific functions.
@@ -151,12 +151,12 @@ namespace tvm {
             if (!new_main_body.same_as(main_func->body)) {
               Function new_main_func = WithFields(main_func, main_func->params, new_main_body);
               mod->Update(gv, new_main_func);
-              }
+            }
             return mod;
             };
           return tvm::transform::CreateModulePass(
             pass_func, 0, "relay.backend.contrib.ethos-u.OutlineCompilerFunctions", {});
-          }
+        }
 
         TVM_REGISTER_GLOBAL("relay.ext.ethos-u.OutlineCompilerFunctions")
           .set_body_typed(OutlineCompilerFunctions);
@@ -174,12 +174,12 @@ namespace tvm {
             // don't consider rewrite if current op is an identity or concatenate.
             if (!call->op->IsInstance<OpNode>()) {
               return post;
-              }
+            }
             const auto* op = call->op.as<OpNode>();
             std::string op_name = op->name;
             if (op_name == "contrib.ethosu.identity" || op_name == "concatenate") {
               return post;
-              }
+            }
 
             // check if we can rewrite parent identity operations to current call.
             bool needs_rewrite = false;
@@ -191,7 +191,7 @@ namespace tvm {
               if (const auto* tuple_get_item = arg.as<TupleGetItemNode>()) {
                 const auto* tuple = tuple_get_item->tuple.as<TupleNode>();
                 current_arg = tuple->fields[tuple_get_item->index];
-                }
+              }
 
               if (const auto* parent_callnode = current_arg.as<CallNode>()) {
                 if (auto parent_op = parent_callnode->op.as<OpNode>()) {
@@ -201,20 +201,20 @@ namespace tvm {
                     needs_rewrite = true;
                     new_args.push_back(parent_call->args[0]);
                     continue;
-                    }
                   }
                 }
-              new_args.push_back(arg);
               }
+              new_args.push_back(arg);
+            }
 
             if (needs_rewrite) {
               Call new_call = Call(call->op, new_args, call->attrs, call->type_args);
               // since we are only removing an identity, we know the type information has not changed
               new_call->checked_type_ = call->checked_type_;
               return new_call;
-              }
-            return post;
             }
+            return post;
+          }
 
           private:
           bool IdentityDoesNothing(const Call& call) {
@@ -223,7 +223,7 @@ namespace tvm {
               attrs->ofm_scale == 1.0 && attrs->ofm_zero_point == 0;
             bool has_no_activation = attrs->activation == "NONE";
             return does_not_requantize && has_no_activation;
-            }
+          }
 
           bool CheckIdentityBetweenTransformOperations(const Call& call, const Call& identity_call) {
             const auto* op = call->op.as<OpNode>();
@@ -235,12 +235,12 @@ namespace tvm {
               const auto* identity_arg = identity_call->args[0].as<CallNode>();
               if (!identity_arg) {
                 return true;
-                }
+              }
               const auto* identity_arg_op = identity_arg->op.as<OpNode>();
               if (!identity_arg_op ||
                 !(std::find(nc_ops.begin(), nc_ops.end(), identity_arg_op->name) != nc_ops.end())) {//为什么这里是非
                 return true;
-                }
+              }
 
               const auto* call_tt = call->checked_type_.as<TensorTypeNode>();
               const auto* identity_arg_tt = identity_arg->checked_type_.as<TensorTypeNode>();
@@ -255,11 +255,11 @@ namespace tvm {
               size_t second_transform_op_dims = call_tt->shape.size();
               if (second_transform_op_dims < first_transform_op_dims) {
                 return false;
-                }
               }
-            return true;
             }
-          };
+            return true;
+          }
+        };
 
         /*!
          * \brief A pass to remove redundant identity operations.
@@ -275,14 +275,14 @@ namespace tvm {
                 if (!new_body.same_as(func->body)) {
                   Function new_func = WithFields(func, func->params, new_body);
                   mod->Update(gv, new_func);
-                  }
                 }
               }
+            }
             return mod;
             };
           return tvm::transform::CreateModulePass(
             pass_func, 0, "relay.backend.contrib.ethos-u.IdentityOptimizer", { "InferType" });
-          }
+        }
 
         TVM_REGISTER_GLOBAL("relay.ext.ethos-u.IdentityOptimizer").set_body_typed(IdentityOptimizer);
 
@@ -298,7 +298,7 @@ namespace tvm {
             return ir_module;
             };
           return tvm::transform::CreateModulePass(pass_func, 0, "relay.contrib.ethos-u.RelayToTIR", {});
-          }
+        }
 
         /*!
          * \brief This function lowers the IRModule with PrimFunc
@@ -316,17 +316,17 @@ namespace tvm {
             ICHECK(primfunc_to_artifact_pf);
             CompilationArtifact ca = (*primfunc_to_artifact_pf)(prim_func);
             compile_artifacts.push_back(ca);
-            }
+          }
           auto ca_to_runtime = tvm::runtime::Registry::Get("runtime.module.ethos-u.create");
           return (*ca_to_runtime)(compile_artifacts);
-          }
+        }
 
         TVM_REGISTER_TARGET_KIND("ethos-u", kDLCPU)
           .set_attr<Bool>("use_device_api", Bool(true))
           .set_attr<FTVMRelayToTIR>(tvm::attr::kRelayToTIR, RelayToTIR())
           .set_attr<FTVMTIRToRuntime>("TIRToRuntime", TIRToRuntime);
 
-        }  // namespace ethosu
-      }  // namespace contrib
-    }  // namespace relay
-  }  // namespace tvm
+      }  // namespace ethosu
+    }  // namespace contrib
+  }  // namespace relay
+}  // namespace tvm

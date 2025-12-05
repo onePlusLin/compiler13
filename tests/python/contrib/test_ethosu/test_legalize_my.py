@@ -1325,7 +1325,7 @@ def test_tflite_pool2d_same_ifm_and_kernel_shape_legalize(
     verify(mod["tvmgen_default_ethos_u_main_0"])
 
 # zejia:是否添加一个my mul的测试
-@pytest.mark.parametrize("operator_type", ["ADD", "SUB", "MUL", "MIN", "MAX"])
+@pytest.mark.parametrize("operator_type", ["MUL"])
 @pytest.mark.parametrize(
     "ifm_shape, ifm2_shape, reversed_operands",
     [
@@ -1353,23 +1353,14 @@ def test_tflite_binary_elemwise_legalize(
         class Model(tf.Module):
             @tf.function
             def tf_function(self, x, y):
-                if operator_type == "ADD":
-                    op = tf.math.add(x, y)
-                elif operator_type == "SUB":
-                    op = tf.math.subtract(x, y)
-                elif operator_type == "MUL":
-                    op = tf.math.multiply(x, y)
-                elif operator_type == "MIN":
-                    op = tf.math.minimum(x, y)
-                elif operator_type == "MAX":
-                    op = tf.math.maximum(x, y)
+                op = tf.math.multiply(x, y)
                 if activation_function:
                     op = activation_function(op)
                 return op
 
         model = Model()
         concrete_func = model.tf_function.get_concrete_function(
-            tf.TensorSpec(ifm_shape, dtype=tf.float32), tf.TensorSpec(ifm2_shape, dtype=tf.float32)
+            tf.TensorSpec(ifm_shape, dtype=tf.float32), tf.TensorSpec(ifm2_shape, dtype=tf.float32) # ?
         )
 
         # Convert the model

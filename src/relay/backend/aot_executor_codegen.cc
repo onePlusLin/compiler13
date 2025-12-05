@@ -82,7 +82,7 @@ namespace tvm {
         void VisitExpr_(const ConstantNode* op) final {
           CreateStorage(op);
           AssignReturnSid(GetRef<Expr>(op));
-          }
+        }
 
         void DeviceAwareVisitExpr_(const CallNode* call_node) final {
           // AOTOnDemandAllocator is run both before and after lowering, so we need to handle the case
@@ -95,26 +95,26 @@ namespace tvm {
           if (call_lowered_props.lowered_func.defined()) {
             func = call_lowered_props.lowered_func;
             args = call_lowered_props.arguments;
-            }
+          }
           else {  // Relay functions that have not been lowered and lowered extern functions
             func = call_node->op;
             args = call_node->args;
             if (call_node->op.as<GlobalVarNode>()) {  // Lowered extern function
               ICHECK(!(call_node->attrs.defined())) << "Extern functions should have null attributes.";
-              }
+            }
             else {  // Relay function which has not been lowered yet
               ICHECK(call_node->op.as<FunctionNode>())
                 << "Expected the call to be to a lowered primfunc, a lowered extern function or a "
                 "unlowered Relay function.";
-              }
             }
+          }
           VisitExpr(func);
           CreateStorage(call_node);
           for (const Expr& arg : args) {
             VisitExpr(arg);
-            }
-          AssignReturnSid(GetRef<Expr>(call_node));
           }
+          AssignReturnSid(GetRef<Expr>(call_node));
+        }
 
         void VisitExpr_(const VarNode* op) final { AssignReturnSid(GetRef<Expr>(op)); }
 
@@ -122,24 +122,24 @@ namespace tvm {
           if (function_nesting() > 1) {
             // do not recurse into sub functions.
             return;
-            }
+          }
           if (func_node->HasNonzeroAttr(attr::kPrimitive)) {
             // No storage needed for primitive functions.
             return;
-            }
+          }
           for (const auto& param : func_node->params) {
             CreateStorage(param.get());
-            }
-          VisitExpr(func_node->body);
           }
+          VisitExpr(func_node->body);
+        }
 
         void VisitExpr_(const GlobalVarNode* op) final {
           // Do nothing.
-          }
+        }
 
         void VisitExpr_(const OpNode* op) final {
           // Do nothing.
-          }
+        }
 
         void VisitExpr_(const TupleNode* op) final {
           std::vector<int64_t> storage_ids;
@@ -154,10 +154,10 @@ namespace tvm {
             storage_sizes_in_bytes.insert(storage_sizes_in_bytes.end(),
               sid->storage_sizes_in_bytes.begin(),
               sid->storage_sizes_in_bytes.end());
-            }
+          }
           storage_device_map_[expr] = StorageInfo(storage_ids, virtual_devices, storage_sizes_in_bytes);
           AssignReturnSid(expr);
-          }
+        }
 
         void VisitExpr_(const TupleGetItemNode* op) final {
           Expr expr = GetRef<Expr>(op);
@@ -167,7 +167,7 @@ namespace tvm {
             StorageInfo({ sids->storage_ids[op->index] }, { sids->virtual_devices[op->index] },
               { sids->storage_sizes_in_bytes[op->index] });
           AssignReturnSid(expr);
-          }
+        }
 
         void VisitExpr_(const IfNode* op) final { LOG(FATAL) << "if is not supported."; }
 
@@ -175,7 +175,7 @@ namespace tvm {
           VisitExpr(value);
           StorageInfo si = GetStorage(value);
           storage_device_map_[var] = si;
-          }
+        }
 
         private:
         void AssignReturnSid(Expr e) {
@@ -184,11 +184,11 @@ namespace tvm {
             return_ids_.clear();
             for (auto sid : sinfo->storage_ids) {
               return_ids_.push_back(sid);
-              }
+            }
             return_ttypes_.clear();
             return_ttypes_ = FlattenTupleType(e->checked_type());
-            }
           }
+        }
         /*!
          * \brief ceil(size/word_size) to get number of words.
          * \param size The original size.
@@ -196,7 +196,7 @@ namespace tvm {
          */
         static size_t DivRoundUp(size_t size, size_t word_size) {
           return (size + word_size - 1) / word_size;
-          }
+        }
         /*!
          * \brief Get the memory requirement.
          * \param prototype The prototype token.
@@ -211,10 +211,10 @@ namespace tvm {
             ICHECK(pval != nullptr) << "Cannot allocate memory symbolic tensor shape " << ttype->shape;
             ICHECK_GE(*pval, 0) << "Cannot allocate memory for tensor with negative shape" << *pval;
             size *= static_cast<size_t>(pval[0]);
-            }
+          }
           size *= DivRoundUp(ttype->dtype.bits() * ttype->dtype.lanes(), 8);
           return size;
-          }
+        }
         /*!
          * \brief Get the necessary storage for the expression.
          * \param expr The expression.
@@ -228,7 +228,7 @@ namespace tvm {
           ICHECK(it != storage_device_map_.end()) << "Could not find " << true_expr->GetTypeKey() << " "
             << PrettyPrint(true_expr) << " in storage device map";
           return it->second;
-          }
+        }
 
         /*!
          * \brief Create storage for the expression.
@@ -236,7 +236,7 @@ namespace tvm {
         void CreateStorage(const ExprNode* op) {
           Expr expr = GetRef<Expr>(op);
           return CreateStorage(expr, GetVirtualDevice(expr));
-          }
+        }
 
         /*!
          * \brief Create storage to hold the result of evaluating \p expr in \p virtual_device.
@@ -252,10 +252,10 @@ namespace tvm {
             storage_ids.push_back(next_available_sid_++);
             virtual_devices.push_back(virtual_device);
             storage_sizes_in_bytes.push_back(GetMemorySizeBytes(ttype));
-            }
+          }
           storage_device_map_[expr] = StorageInfo(std::move(storage_ids), std::move(virtual_devices),
             std::move(storage_sizes_in_bytes));
-          }
+        }
 
         /*! \brief mapping of expression -> storageInfo */
         StorageMap storage_device_map_;
@@ -265,7 +265,7 @@ namespace tvm {
         std::vector<int> return_ids_;
         /*! \brief the data types of the return values */
         std::vector<TensorType> return_ttypes_;
-        };
+      };
 
       /*! \brief Code generator for AOT executor */
       class AOTExecutorCodegen : public MixedModeVisitor {
@@ -335,7 +335,7 @@ namespace tvm {
            * with the C runtime only.
            */
           kUnpacked,  // Emit tir.call_extern passing only the `data` part of DLTensors.
-          };
+        };
 
         /*!
          * \brief Return a vector of variables that represents the sids for the given Relay Expr
@@ -356,13 +356,13 @@ namespace tvm {
               int output_index = std::distance(return_sid_.begin(), output_iter);
               buffer_vars.push_back(GetBufferVarForIO(input_vars_.size() + output_index));
               continue;
-              }
+            }
 
             auto sid_value = sids_table_[sid];
             buffer_vars.push_back(sid_value);
-            }
-          return buffer_vars;
           }
+          return buffer_vars;
+        }
 
         /*!
          * brief Given an expression return the variable(s) associated with that expression
@@ -373,12 +373,12 @@ namespace tvm {
             // Input variable
             int main_index = std::distance(input_vars_.begin(), input_iter);
             return { GetBufferVarForIO(main_index) };
-            }
+          }
           else {
             // Storage identifier (i.e., intermediate memory)
             return PackSid(arg);
-            }
           }
+        }
 
         /*!
          * \brief Reverse lookup the device name in devices_ map.
@@ -389,21 +389,21 @@ namespace tvm {
           for (std::pair<String, tir::Var> kv : devices_) {
             if (kv.second->name_hint == device_context->name_hint) {
               return kv.first;
-              }
             }
+          }
           ICHECK(false) << "Did not find a device name associated with " << device_context;
           return "";
-          }
+        }
 
         void PushArgs(const Expr& expr, const std::vector<tir::Var>& sids, Array<PrimExpr>* args) {
           const TupleNode* t = expr.as<TupleNode>();
           if (t != nullptr) {
             CHECK_EQ(sids.size(), t->fields.size()) << "Relay tuple does not map 1:1 into TIR; AOT can't "
               "handle this type of Relay Expr in a CallNode.";
-            }
+          }
 
           args->insert(args->end(), sids.begin(), sids.end());
-          }
+        }
 
         /*
          * Wraps a call_extern with a tvm_check_return annotation if required otherwise
@@ -413,7 +413,7 @@ namespace tvm {
           Array<PrimExpr> args = { tir::make_const(DataType::Int(32, 1), 0, Span()),
                                   tir::make_const(DataType::Int(32, 1), -1, Span()), existing_call };
           return tir::Call(DataType::Int(32), tir::builtin::tvm_check_return(), args);
-          }
+        }
 
         /*!
          * brief Create a function call
@@ -437,12 +437,12 @@ namespace tvm {
               // because param_handle is actually code-generated as `const void*`, and the `const` piece
               // needs to be removed.
               args.push_back(tvm::tir::Cast(DataType::Handle(32, 1), param_handle));
-              }
+            }
             else {
               auto sids = FindExpr(arg);
               PushArgs(arg, sids, &args);
-              }
             }
+          }
 
           // Pack the return(s) value. A call node can produce multiple outputs
           auto result_expr_sid = PackSid(result_expr);
@@ -454,41 +454,41 @@ namespace tvm {
           tir::Stmt func_call;
 
           switch (call_type_) {
-              case CallType::kUnpacked: {
+            case CallType::kUnpacked: {
                 // call_extern calling convention with optional context
                 if (has_c_device_api_context) {
                   device_context = device_contexts_.Get(global_var).value();
                   args.push_back(device_context);
-                  }
+                }
                 func_call = tir::Evaluate(AddCheckReturn(
                   tvm::tir::Call(DataType::Int(32), tvm::tir::builtin::call_extern(), args)));
                 break;
-                }
-              case CallType::kCPacked: {
+              }
+            case CallType::kCPacked: {
                 if (has_c_device_api_context) {
                   device_context = device_contexts_.Get(global_var).value();
                   args.push_back(device_context);
-                  }
+                }
                 else {
                   // NOTE: LowerTVMBuiltin expects some device_context placeholder.
                   args.push_back(tir::make_zero(DataType::Handle()));
-                  }
+                }
                 func_call = tir::Evaluate(
                   tvm::tir::Call(DataType::Int(32), tvm::tir::builtin::tvm_call_cpacked(), args));
                 create_func_call_stmts.push_back(func_call);
                 break;
-                }
-              case CallType::kPacked: {
+              }
+            case CallType::kPacked: {
                 // call_packed does not accept a device context.
                 CHECK(!has_c_device_api_context) << "CallType::kPacked does not accept a device context";
                 func_call = tir::Evaluate(AddCheckReturn(
                   tvm::tir::Call(DataType::Int(32), tvm::tir::builtin::tvm_call_packed(), args)));
                 create_func_call_stmts.push_back(func_call);
                 break;
-                }
-              default:
-                ICHECK(false) << "Unknown CallType: " << call_type_;
-            }
+              }
+            default:
+              ICHECK(false) << "Unknown CallType: " << call_type_;
+          }
 
           ICHECK(func_call.defined()) << "Must define func_call";
 
@@ -498,11 +498,11 @@ namespace tvm {
                 func_call,
                 GenerateDeviceHook(device_context, "Close"),
               }));
-            }
+          }
 
           tir::Stmt body = tir::SeqStmt::Flatten(func_call);
           stmts_.push_back(body);
-          }
+        }
 
         /*!
          * \brief Copy a variable to the output. This function is mainly used in edge cases
@@ -522,16 +522,16 @@ namespace tvm {
           // Re-use in/out as the buffer var, if possible
           if (auto opt = out.as<tir::Var>()) {
             tmp_write.CopyOnWrite()->data = opt.value();
-            }
+          }
           else {
             let_nest.push_back(tir::LetStmt(tmp_write->data, out, tir::Evaluate(0)));
-            }
+          }
           if (auto opt = in.as<tir::Var>()) {
             tmp_read.CopyOnWrite()->data = opt.value();
-            }
+          }
           else {
             let_nest.push_back(tir::LetStmt(tmp_read->data, in, tir::Evaluate(0)));
-            }
+          }
 
           // Copy the variable from the input to the output
           te::Var loop_idx("i", DataType::Int(32));
@@ -541,7 +541,7 @@ namespace tvm {
           copy = tir::MergeNest(let_nest, copy);
 
           stmts_.push_back(copy);
-          }
+        }
 
         /*
          * \brief Collects device context variables for passing to operators
@@ -557,7 +557,7 @@ namespace tvm {
             Optional<TargetKind> target_kind = tvm::TargetKind::Get(device_context_name);
             if (!target_kind || !target_attr_map.count(target_kind.value())) {
               return;
-              }
+            }
             if (target_attr_map[target_kind.value()]) {
               std::string context_name = tvm::runtime::SanitizeName(device_context_name);
               tir::Var device_context_var("device_context_" + context_name, DataType::Handle());
@@ -565,17 +565,17 @@ namespace tvm {
               auto pair = target_contexts.find(target_kind.value());
               if (pair != target_contexts.end()) {
                 device_context_var = (*pair).second;
-                }
+              }
               else {
                 main_signature_.push_back(device_context_var);
                 devices_.Set(context_name, device_context_var);
                 target_contexts.Set(target_kind.value(), device_context_var);
-                }
+              }
 
               device_contexts_.Set(global_var, device_context_var);
-              }
             }
           }
+        }
 
         /**
          * \brief Generates a call to a given hook for all Devices found for C Device API
@@ -594,9 +594,9 @@ namespace tvm {
               AddCheckReturn(tvm::tir::Call(DataType::Int(32), tvm::tir::builtin::call_extern(),
                 { tvm::tir::StringImm(device_hook_name), context })));
             device_hooks.push_back(device_hook);
-            }
-          return tir::SeqStmt::Flatten(device_hooks);
           }
+          return tir::SeqStmt::Flatten(device_hooks);
+        }
 
         /**
          * \brief Generates a call to a given hook for a single Device function
@@ -615,7 +615,7 @@ namespace tvm {
           return tir::Evaluate(
             AddCheckReturn(tir::Call(DataType::Int(32), tvm::tir::builtin::call_extern(),
               { tvm::tir::StringImm(device_hook), context })));
-          }
+        }
 
         /*!
          * Utility function to string together different arguments
@@ -626,17 +626,17 @@ namespace tvm {
           using List = int[];
           (void)List {
             0, ((void)(ss << args), 0)...
-            };
+          };
 
           return ss.str();
-          }
+        }
 
         void VisitExpr_(const CallNode* call_node) override {
           OnDeviceProps on_device_props = GetOnDeviceProps(call_node);
           if (on_device_props.body.defined()) {
             VisitExpr(on_device_props.body);
             return;
-            }
+          }
 
           DeviceCopyProps device_copy_props = GetDeviceCopyProps(call_node);
           CallLoweredProps call_lowered_props = GetCallLoweredProps(call_node);
@@ -645,7 +645,7 @@ namespace tvm {
             // TODO(mbs): device_copy cleaunp
             // Suspect treating as no-op is better since already built into the StorageInfo?
             LOG(FATAL) << "The AOT executor does not currently support device_copy";
-            }
+          }
 
           // At this point we should only see calls of the form call_lowered(@callee, (args...)),
           // where @callee can be a PrimFunc we've compiled or an external function supplied via
@@ -656,9 +656,9 @@ namespace tvm {
           for (const auto& arg : call_lowered_props.arguments) {
             // Evaluate the args
             VisitExpr(arg);
-            }
-          CreateFuncCall(call_lowered_props, GetRef<Call>(call_node));
           }
+          CreateFuncCall(call_lowered_props, GetRef<Call>(call_node));
+        }
 
         void VisitExpr_(const VarNode* op) override {
           Expr expr = GetRef<Expr>(op);
@@ -667,7 +667,7 @@ namespace tvm {
           // Let bound vars refer to a value, so these should not be considered "output" vars.
           if (let_bound_vars_.find(GetRef<Var>(op)) != let_bound_vars_.end()) {
             return;
-            }
+          }
 
           // If the Var node is an output node we need to copy the content of the variable to the output
           // It's safe to check the SID here because Var StorageToken are never reallocated
@@ -679,14 +679,14 @@ namespace tvm {
                 { tir::StringImm(params_by_expr_[expr]) });
               CopyToOutput(GetBufferVarForIO(input_vars_.size() + output_index), param_handle,
                 /*pack_input*/ false, sinfo->storage_sizes_in_bytes[0]);
-              }
+            }
             else {
               auto var_expr = FindExpr(expr);
               CopyToOutput(GetBufferVarForIO(input_vars_.size() + output_index), var_expr[0],
                 /*pack_input*/ false, sinfo->storage_sizes_in_bytes[0]);
-              }
             }
           }
+        }
 
         void VisitExpr_(const ConstantNode* op) override {
           Expr expr = GetRef<Expr>(op);
@@ -710,14 +710,14 @@ namespace tvm {
               { tir::StringImm(ss.str()) });
             CopyToOutput(GetBufferVarForIO(input_vars_.size() + output_index), constant,
               /* pack_input */ false, sinfo->storage_sizes_in_bytes[0]);
-            }
           }
+        }
 
         void VisitExpr_(const TupleNode* op) override {
           for (auto field : op->fields) {
             VisitExpr(field);
-            }
           }
+        }
 
         void VisitExpr_(const LetNode* op) override {
           auto pre_visit = [this](const LetNode* op) {
@@ -729,36 +729,36 @@ namespace tvm {
             this->visit_counter_[op] += 1;
             };
           ExpandANormalForm(op, pre_visit, post_visit);
-          }
+        }
 
         void VisitExpr_(const TupleGetItemNode* op) override { VisitExpr(op->tuple); }
         void VisitExpr_(const OpNode* op) override {
           if (GetRef<Op>(op) != CallLoweredOp() && GetRef<Op>(op) != OnDeviceOp()) {
             LOG(FATAL) << "All OpNodes except for call_lowered should have been expanded";
-            }
           }
+        }
         void VisitExpr_(const IfNode* op) override {
           LOG(FATAL) << "All GlobalVarNodes should be removed before AOT executor's Codegen is called";
-          }
+        }
         void VisitExpr_(const FunctionNode* op) override {
           ICHECK(op->GetAttr<String>(attr::kCompiler).defined())
             << "FunctionNode only supported by custom codegen";
-          }
+        }
         void VisitExpr_(const RefCreateNode* op) override {
           LOG(FATAL) << "AOT executor does not support references (found RefCreateNode)";
-          }
+        }
         void VisitExpr_(const RefReadNode* op) override {
           LOG(FATAL) << "AOT executor does not support references (found RefReadNode)";
-          }
+        }
         void VisitExpr_(const RefWriteNode* op) override {
           LOG(FATAL) << "AOT executor does not support references (found RefWriteNode)";
-          }
+        }
         void VisitExpr_(const ConstructorNode* op) override {
           LOG(FATAL) << "AOT executor does not support ADTs (found ConstructorNode)";
-          }
+        }
         void VisitExpr_(const MatchNode* op) override {
           LOG(FATAL) << "AOT executor does not support matching (found MatchNode)";
-          }
+        }
 
         // Create the main PrimFunc to execute the graph. Please note that
         // the packed function calls don't pack their arguments. The AOT
@@ -775,7 +775,7 @@ namespace tvm {
             const bool is_param = (params_by_expr_.find(kv.first) != params_by_expr_.end());
             if (is_input || is_param) {
               continue;
-              }
+            }
 
             for (unsigned int i = 0; i < kv.second->storage_ids.size(); i++) {
               int size = kv.second->storage_sizes_in_bytes[i];
@@ -783,13 +783,13 @@ namespace tvm {
 
               if (std::find(return_sid_.begin(), return_sid_.end(), sid) != return_sid_.end()) {
                 continue;
-                }
+              }
 
               // Make sure it hasn't already been allocated, this can happen
               // with let-bound var/value pairs.
               if (allocated.find(sid) != allocated.end()) {
                 continue;
-                }
+              }
 
               allocated[sid] = constant_map_.count(sids_table_[sid]);
 
@@ -799,10 +799,10 @@ namespace tvm {
                 PointerType ptype = Downcast<PointerType>(sids_table_[sid]->type_annotation);
                 DataType element_type = Downcast<PrimType>(ptype->element_type)->dtype;
                 body = tir::Allocate(sids_table_[sid], element_type, { size }, tir::const_true(), body);
-                }
-              allocated[sid] = true;
               }
+              allocated[sid] = true;
             }
+          }
 
           for (auto kv : constant_map_) {
             auto buffer_var = kv.first;
@@ -814,9 +814,9 @@ namespace tvm {
             for (int i = 0; i < ndim; i++) {
               int shape = kv.second->data->shape[i];
               extents.push_back(tir::make_const(DataType::Int(32), shape, Span()));
-              }
-            body = tir::AllocateConst(buffer_var, dtype, extents, kv.second->data, body);
             }
+            body = tir::AllocateConst(buffer_var, dtype, extents, kv.second->data, body);
+          }
 
           // Define the PrimFunc attributes
           Map<String, ObjectRef> dict_attrs;
@@ -832,7 +832,7 @@ namespace tvm {
           // Make the PrimFunc
           return tir::PrimFunc(main_signature_, final_body, VoidType(), main_buffer_map_,
             DictAttrs(dict_attrs));
-          }
+        }
 
         /*!
          * \brief Access IO vars using the buffer vars and
@@ -850,7 +850,7 @@ namespace tvm {
         void CreateIOVar(const Expr& expr, const std::string& original_name,
           bool use_unique_name = true) {
           CreateIOVar(expr->checked_type(), original_name, use_unique_name);
-          }
+        }
 
         /*!
          * \brief Create tir::Var for input/output while updating the buffer_maps.
@@ -865,13 +865,13 @@ namespace tvm {
             TupleType tuple_type = Downcast<TupleType>(type);
             for (unsigned i = 0; i < tuple_type->fields.size(); i++) {
               CreateIOVar(tuple_type->fields[i], original_name);
-              }
             }
+          }
           else {
             std::string name = original_name;
             if (use_unique_name) {
               name = GetUniqueIOVarName(original_name);
-              }
+            }
             tir::Var var = tir::Var(name, DataType::Handle());
             main_signature_.push_back(var);
             auto tensor_type = type.as<TensorTypeNode>();
@@ -883,8 +883,8 @@ namespace tvm {
               name + "_buffer", 16, 1, tir::BufferType::kDefault);
             main_buffer_map_.Set(var, buffer);
             io_tensor_types_.Set(var, Downcast<TensorType>(type));
-            }
           }
+        }
 
         /*!
          * \brief Create a unique name for I/O Var
@@ -893,12 +893,12 @@ namespace tvm {
           if (io_var_names_.find(name) == io_var_names_.end()) {
             io_var_names_[name] = 1;
             return name;
-            }
+          }
           else {
             io_var_names_[name] = io_var_names_[name] + 1;
             return name + std::to_string(io_var_names_[name]);
-            }
           }
+        }
 
         /*!
          * \brief Calculate workspace sizes for PrimFuncs in the IRModule
@@ -918,15 +918,15 @@ namespace tvm {
                 updated_function_metadata.Set(global_var->name_hint,
                   function_metadata[global_var->name_hint]);
                 updated_function_metadata[global_var->name_hint]->workspace_sizes.Set(tgt, ws);
-                }
+              }
               else {
                 FunctionInfo finfo{ {{tgt, ws}}, {}, {}, {{tgt, pfunc}}, {} };
                 updated_function_metadata.Set(global_var->name_hint, finfo);
-                }
               }
             }
-          return updated_function_metadata;
           }
+          return updated_function_metadata;
+        }
 
         /*!
          * \brief Run USMP to plan memory for lowered IRModule.
@@ -953,22 +953,22 @@ namespace tvm {
                     ? main_func_info->constant_sizes[tgt]->value
                     : 0;
                   main_func_info->constant_sizes.Set(tgt, size);
-                  }
+                }
                 else if (allocated_pool_info->pool_info->IsInstance<WorkspacePoolInfoNode>()) {
                   size += main_func_info->workspace_sizes.count(tgt)
                     ? main_func_info->workspace_sizes[tgt]->value
                     : 0;
                   main_func_info->workspace_sizes.Set(tgt, size);
-                  }
+                }
                 else {
                   LOG(FATAL) << "Unknown pool type: " << allocated_pool_info->pool_info->GetTypeKey();
-                  }
                 }
               }
             }
+          }
           function_metadata_.Set(runtime::symbol::tvm_module_main, main_func_info);
           return lowered_mod;
-          }
+        }
 
         /*!
          * \brief Run StorageRewrite to plan memory for lowered IRModule.
@@ -996,7 +996,7 @@ namespace tvm {
           main_func_info->workspace_sizes.Set(config_->host_target, main_workspace_size_bytes);
           function_metadata_.Set(runtime::symbol::tvm_module_main, main_func_info);
           return lowered_mod;
-          }
+        }
 
         /*!
          * \brief Gets module workspace alignment from supplied executor or defaults to 16
@@ -1004,7 +1004,7 @@ namespace tvm {
         Integer GetModuleWorkspaceByteAlignment(const IRModule& mod) {
           Executor executor_config = mod->GetAttr<Executor>(tvm::attr::kExecutor).value();
           return executor_config->GetAttr<Integer>("workspace-byte-alignment").value_or(16);
-          }
+        }
 
         /*!
          * \brief Gets module constant alignment from supplied executor or defaults to 16
@@ -1012,7 +1012,7 @@ namespace tvm {
         Integer GetModuleConstantByteAlignment(const IRModule& mod) {
           Executor executor_config = mod->GetAttr<Executor>(tvm::attr::kExecutor).value();
           return executor_config->GetAttr<Integer>("constant-byte-alignment").value_or(16);
-          }
+        }
 
         protected:
         /*! \brief mod */
@@ -1069,7 +1069,7 @@ namespace tvm {
         public:
         AOTExecutorCodegen(runtime::Module* mod, const Array<Target>& targets)
           : mod_(mod), config_(transform::PassContext::Current(), targets) {
-          }
+        }
         //zejia codegen
         LoweredOutput Codegen(IRModule mod, relay::Function func, String mod_name) {
           VLOG_CONTEXT << "AOT";
@@ -1086,22 +1086,22 @@ namespace tvm {
           if (runtime_config->name == kTvmRuntimeCrt) {
             if (unpacked_api == true) {
               call_type_ = CallType::kUnpacked;
-              }
+            }
             else if (unpacked_api == false && interface_api == "packed") {
               call_type_ = CallType::kCPacked;
-              }
+            }
             else {
               CHECK(interface_api == "packed" || unpacked_api == true)
                 << "Either need interface_api == \"packed\" (got: " << interface_api
                 << ") or unpacked-api == true (got: " << unpacked_api << ") when targeting c runtime";
               ICHECK(false) << "Unhandled executor option config: interface-api=" << interface_api
                 << ", unpacked-api=" << unpacked_api;
-              }
             }
+          }
           else if (runtime_config->name == kTvmRuntimeCpp) {
             if (unpacked_api == false && interface_api == "packed") {
               call_type_ = CallType::kCPacked;
-              }
+            }
             else {
               CHECK(static_cast<bool>(unpacked_api) == false && interface_api == "packed")
                 << "Need unpacked-api == false (got: " << unpacked_api
@@ -1109,12 +1109,12 @@ namespace tvm {
                 << ") when targeting c++ runtime";
               ICHECK(false) << "Unhandled executor option config: interface-api=" << interface_api
                 << ", unpacked-api=" << unpacked_api;
-              }
             }
+          }
           else {
             ICHECK(false) << "runtime_config (" << runtime_config->name
               << ") is not one of the expected values";
-            }
+          }
           //2. IR变换和规范化
           mod = transform::ToANormalForm()(mod);// 将模块转换为 A-normal 形式
           mod = transform::InferType()(mod);
@@ -1127,7 +1127,7 @@ namespace tvm {
             // allows us to process each function as we lower it.
             if (func->GetAttr<String>(attr::kCompiler).defined()) {//这个函数应该是lowertensor之后调用的为外部函数保留constant的的映射
               UpdateConstants(func, &params_);
-              }
+            }
 
             // TODO(@areusch, @jroesch): We should refactor this to
             // execute as a further pass, instead writing data to the
@@ -1140,7 +1140,7 @@ namespace tvm {
             pass_ctx->GetConfig<Bool>("relay.remove_standalone_reshapes.enable", Bool(true)).value();
           if (enable_remove_reshapes) {
             lowered_mod = transform::RemoveStandaloneReshapes()(lowered_mod);
-            }
+          }
           auto lowered_main = lowered_mod->Lookup("main");
           auto lowered_main_func = Downcast<Function>(lowered_main);
           //5. aot内存规划和分配
@@ -1162,7 +1162,7 @@ namespace tvm {
             // event of a sanitization/卫生处理 collision. Therefore, enforcing
             // the var created to use the input_name strictly.
             CreateIOVar(input, input_name, /*use_unique_name = */ false);
-            }
+          }
 
           // Define the storage allocator ids
           for (auto kv : storage_device_map_) {
@@ -1175,8 +1175,8 @@ namespace tvm {
               te::Var buffer_var(MakeString("sid_", sid),
                 PointerType(PrimType(DataType::Int(8)), "global.workspace"));
               sids_table_[sid] = buffer_var;
-              }
             }
+          }
 
           // Retrieve the return sids
           return_sid_ = final_aot_allocator.GetReturnIds();
@@ -1192,19 +1192,19 @@ namespace tvm {
                 // thus should be used as they are provided.
                 CreateIOVar(output_tuple_type->fields[i], output_tensor_names[i],
                   /*use_unique_name = */ false);
-                }
               }
+            }
             else {
               // AoT Executor Codegen does not create these names,
               // thus should be used as they are provided.
               CreateIOVar(lowered_main_func->body, output_tensor_names[0], /*use_unique_name = */ false);
-              }
             }
+          }
           else {
             // If output tensor names are not provided we will generate output(x)
             // where x is a counter to create unique names.
             CreateIOVar(lowered_main_func->body, "output");
-            }
+          }
 
           CollectDeviceVariables(lowered_mod->GetAttr<Map<GlobalVar, String>>("device_contexts").value());
           VisitExpr(lowered_main_func->body);
@@ -1221,12 +1221,12 @@ namespace tvm {
             .value_or({});
           for (const auto& kv : const_name_to_constant) {
             ICHECK(ret.params.emplace(kv.first, kv.second).second);
-            }
+          }
 
           // Collect any constants extracted during lowering.
           for (const auto& kv : params_) {
             ICHECK(ret.params.emplace(kv.first, kv.second).second);
-            }
+          }
           //8. tir主函数创建和处理
           // AoT Executor codegen works completely on TIR beyond this point, hence removing relay main
           // function and replacing it with its TIR version. We should try to make this a Pass.
@@ -1242,7 +1242,7 @@ namespace tvm {
           Array<TensorType> input_tensor_types;
           for (auto i : inputs) {
             input_tensor_types.push_back(io_tensor_types_[i]);
-            }
+          }
           Array<tir::Var> outputs =
             Array<tir::Var>(outputs_begin_iterator, main_func_params_end_iterator - devices.size());
 
@@ -1254,17 +1254,17 @@ namespace tvm {
           bool enable_usmp = false;
           if (runtime_config->name == kTvmRuntimeCrt) {
             enable_usmp = true;
-            }
+          }
           if (pass_ctx->GetConfig<Bool>(kUSMPEnableOption) != nullptr) {
             enable_usmp = pass_ctx->GetConfig<Bool>(kUSMPEnableOption, Bool(false)).value();
-            }
+          }
 
           if (enable_usmp) {
             lowered_mod = PlanMemoryWithUSMP(lowered_mod);
-            }
+          }
           else {
             lowered_mod = PlanMemoryWithStorageRewrite(lowered_mod);
-            }
+          }
           ret.function_metadata = std::move(function_metadata_);
 
           // Legalize AOT if needed. This means that all the packed calls
@@ -1272,7 +1272,7 @@ namespace tvm {
           if (call_type_ == CallType::kCPacked || call_type_ == CallType::kPacked) {
             auto pack_calls = tir::transform::LegalizePackedCalls();
             lowered_mod = pack_calls(lowered_mod);
-            }
+          }
 
           // Collect any runtime modules generated by external codegen.
           ret.external_mods =
@@ -1287,7 +1287,7 @@ namespace tvm {
               << kv.first->ToDebugString() << std::endl
               << "maps to:" << std::endl
               << PrettyPrint(kv.second);
-            }
+          }
 
           // Extract USMP metadata to pass onto metadata sources
           Map<tir::Var, tir::usmp::AllocatedPoolInfo> pool_var_info;
@@ -1301,8 +1301,8 @@ namespace tvm {
               int pool_var_index = allocated_pool_info->pool_var_idx.value()->value;
               pool_vars.push_back(tir_main_func->params[pool_var_index]);
               pool_var_info.Set(tir_main_func->params[pool_var_index], allocated_pool_info);
-              }
             }
+          }
           Map<String, tir::usmp::PoolAllocation> io_pool_allocations =
             lowered_mod
             ->GetAttr<Map<String, tir::usmp::PoolAllocation>>(tvm::attr::kIOTensorPoolAllocations)
@@ -1313,20 +1313,20 @@ namespace tvm {
             Array<String> output_tensor_names = opt.value();
             for (size_t i = 0; i < output_tensor_names.size(); ++i) {
               output_var_names.push_back(output_tensor_names[i]);
-              }
             }
+          }
 
           // If output names have not been specified then generate default output names
           if (output_var_names.size() == 0) {
             if (return_sid_.size() == 1) {
               output_var_names.push_back(String("output"));
-              }
+            }
             else {
               for (size_t i = 0; i < return_sid_.size(); ++i) {
                 output_var_names.push_back(String("output" + std::to_string(i)));
-                }
               }
             }
+          }
 
           Array<TensorType> output_tensor_types{ final_aot_allocator.GetReturnTtypes() };
 
@@ -1336,7 +1336,7 @@ namespace tvm {
             GetModuleWorkspaceByteAlignment(mod), GetModuleConstantByteAlignment(mod), pool_var_info,
             io_pool_allocations);
           return ret;
-          }
+        }
         //-----------------------------------------------------------------------------
                 /*!
                  * \brief Get list of devices found
@@ -1347,8 +1347,8 @@ namespace tvm {
           std::transform(devices_.begin(), devices_.end(), device_names.begin(),
             [](const auto& it) -> String { return it.first; });
           return device_names;
-          }
-        };  // namespace backend
+        }
+      };  // namespace backend
 
       class AOTExecutorCodegenModule : public runtime::ModuleNode {
         public:
@@ -1362,7 +1362,7 @@ namespace tvm {
               Array<Target> targets = args[1];
               init(mod, targets);
               });
-            }
+          }
           else if (name == "codegen") {
             return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
               IRModule mod = args[0];
@@ -1370,43 +1370,43 @@ namespace tvm {
               String mod_name = args[2];
               this->output_ = this->codegen_->Codegen(mod, func, mod_name);
               });
-            }
+          }
           else if (name == "list_params_name") {
             return PackedFunc(
               [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = list_params_name(); });
-            }
+          }
           else if (name == "get_param_by_name") {
             return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
               String key = args[0];
               *rv = get_param_by_name(key);
               });
-            }
+          }
           else if (name == "get_irmodule") {
             return PackedFunc(
               [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = get_irmodule(); });
-            }
+          }
           else if (name == "get_external_modules") {
             return PackedFunc(
               [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = get_external_modules(); });
-            }
+          }
           else if (name == "get_function_metadata") {
             return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
               *rv = this->output_.function_metadata;
               });
-            }
+          }
           else if (name == "get_devices") {
             return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
               *rv = this->codegen_->ListDevices();
               });
-            }
+          }
           else if (name == "get_executor_codegen_metadata") {
             return PackedFunc(
               [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = output_.metadata; });
-            }
+          }
           else {
             return PackedFunc([](TVMArgs args, TVMRetValue* rv) {});
-            }
           }
+        }
 
         const char* type_key() const final { return "RelayGraphRuntimeCodegenModule"; }
 
@@ -1417,21 +1417,21 @@ namespace tvm {
         void init(void* mod, const Array<Target>& targets) {
           codegen_ =
             std::make_shared<AOTExecutorCodegen>(reinterpret_cast<runtime::Module*>(mod), targets);
-          }
+        }
 
         Array<runtime::String> list_params_name() {
           Array<runtime::String> ret;
           for (const auto& kv : this->output_.params) {
             ret.push_back(kv.first);
-            }
-          return ret;
           }
+          return ret;
+        }
 
         runtime::NDArray get_param_by_name(String key) {
           auto it = this->output_.params.find(key);
           CHECK(it != this->output_.params.end()) << "no such parameter " << key;
           return (*it).second;
-          }
+        }
 
         Array<tvm::runtime::Module> get_external_modules() { return output_.external_mods; }
 
@@ -1439,16 +1439,16 @@ namespace tvm {
 
         std::shared_ptr<AOTExecutorCodegen> codegen_;
         LoweredOutput output_;
-        };
+      };
 
       runtime::Module CreateAOTExecutorCodegenMod() {
         auto ptr = make_object<AOTExecutorCodegenModule>();
         return runtime::Module(ptr);
-        }
+      }
 
       TVM_REGISTER_GLOBAL("relay.build_module._AOTExecutorCodegen")
         .set_body([](TVMArgs args, TVMRetValue* rv) { *rv = CreateAOTExecutorCodegenMod(); });
 
-      }  // namespace backend
-    }  // namespace relay
-  }  // namespace tvm
+    }  // namespace backend
+  }  // namespace relay
+}  // namespace tvm

@@ -65,5 +65,12 @@
         "list": "cpp",
         "regex": "cpp",
         "typeindex": "cpp"
+    },
+    "C_Cpp.vcFormat.indent.braces": false,
+    "C_Cpp.clang_format_style": "file",
+    "C_Cpp.clang_format_fallbackStyle": "Google",
+    "editor.formatOnSave": true,
+    "[cpp]": {
+        "editor.formatOnSave": true
     }
 }

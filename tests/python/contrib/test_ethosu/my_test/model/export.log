@@ -1,0 +1,94 @@
+2025-12-05 09:21:53.529040: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:467] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1764897713.546313 4152485 cuda_dnn.cc:8579] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+E0000 00:00:1764897713.551885 4152485 cuda_blas.cc:1407] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+W0000 00:00:1764897713.565970 4152485 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1764897713.565992 4152485 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1764897713.565994 4152485 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1764897713.565995 4152485 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+2025-12-05 09:21:53.569741: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+I0000 00:00:1764897715.328715 4152485 gpu_device.cc:2019] Created device /job:localhost/replica:0/task:0/device:GPU:0 with 18291 MB memory:  -> device: 0, name: NVIDIA RTX 4000 Ada Generation, pci bus id: 0000:08:00.0, compute capability: 8.9
+I0000 00:00:1764897716.241630 4152485 cuda_dnn.cc:529] Loaded cuDNN version 91002
+TensorFlow version: 2.19.1
+
+=== 模型构建成功 ===
+输入形状: (1, 640, 640, 3)
+输出 0 形状: (1, 318, 318, 32)
+输出 1 形状: (1, 318, 318, 32)
+输出 2 形状: (1, 318, 318, 32)
+输出 3 形状: (1, 318, 318, 32)
+Model: "my_model"
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Layer (type)                    ┃ Output Shape           ┃       Param # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ conv2d (Conv2D)                 │ (1, 318, 318, 32)      │         3,488 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ activation (Activation)         │ ?                      │             0 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ multiply (Multiply)             │ (1, 318, 318, 32)      │             0 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ conv2d_1 (Conv2D)               │ (1, 318, 318, 32)      │         3,488 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ activation_1 (Activation)       │ ?                      │             0 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ conv2d_2 (Conv2D)               │ (1, 318, 318, 32)      │         3,488 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ multiply_1 (Multiply)           │ (1, 318, 318, 32)      │             0 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ conv2d_3 (Conv2D)               │ (1, 318, 318, 32)      │         3,488 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ activation_2 (Activation)       │ ?                      │             0 │
+├─────────────────────────────────┼────────────────────────┼───────────────┤
+│ multiply_2 (Multiply)           │ (1, 318, 318, 32)      │             0 │
+└─────────────────────────────────┴────────────────────────┴───────────────┘
+ Total params: 13,952 (54.50 KB)
+ Trainable params: 13,952 (54.50 KB)
+ Non-trainable params: 0 (0.00 B)
+开始转换模型 (这可能需要一点时间)...
+Saved artifact at '/tmp/tmpd6d9h4ux'. The following endpoints are available:
+
+* Endpoint 'serve'
+  args_0 (POSITIONAL_ONLY): TensorSpec(shape=(None, 640, 640, 3), dtype=tf.float32, name=None)
+Output Type:
+  List[TensorSpec(shape=(None, 318, 318, 32), dtype=tf.float32, name=None), TensorSpec(shape=(None, 318, 318, 32), dtype=tf.float32, name=None), TensorSpec(shape=(None, 318, 318, 32), dtype=tf.float32, name=None), TensorSpec(shape=(None, 318, 318, 32), dtype=tf.float32, name=None)]
+Captures:
+  138959008863808: TensorSpec(shape=(), dtype=tf.resource, name=None)
+  138959008611168: TensorSpec(shape=(), dtype=tf.resource, name=None)
+  138959261749792: TensorSpec(shape=(), dtype=tf.resource, name=None)
+  138959008864160: TensorSpec(shape=(), dtype=tf.resource, name=None)
+  138958907303616: TensorSpec(shape=(), dtype=tf.resource, name=None)
+  138958907304672: TensorSpec(shape=(), dtype=tf.resource, name=None)
+  138958907298336: TensorSpec(shape=(), dtype=tf.resource, name=None)
+  138958907299568: TensorSpec(shape=(), dtype=tf.resource, name=None)
+/home/linzejia/anaconda3/envs/yolotf_new/lib/python3.10/site-packages/tensorflow/lite/python/convert.py:854: UserWarning: Statistics for quantized inputs were expected, but not specified; continuing anyway.
+  warnings.warn(
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+W0000 00:00:1764897716.684156 4152485 tf_tfl_flatbuffer_helpers.cc:365] Ignored output_format.
+W0000 00:00:1764897716.684166 4152485 tf_tfl_flatbuffer_helpers.cc:368] Ignored drop_control_dependency.
+2025-12-05 09:21:56.684615: I tensorflow/cc/saved_model/reader.cc:83] Reading SavedModel from: /tmp/tmpd6d9h4ux
+2025-12-05 09:21:56.685227: I tensorflow/cc/saved_model/reader.cc:52] Reading meta graph with tags { serve }
+2025-12-05 09:21:56.685233: I tensorflow/cc/saved_model/reader.cc:147] Reading SavedModel debug info (if present) from: /tmp/tmpd6d9h4ux
+I0000 00:00:1764897716.689738 4152485 mlir_graph_optimization_pass.cc:425] MLIR V1 optimization pass is not enabled
+2025-12-05 09:21:56.690362: I tensorflow/cc/saved_model/loader.cc:236] Restoring SavedModel bundle.
+2025-12-05 09:21:56.710804: I tensorflow/cc/saved_model/loader.cc:220] Running initialization op on SavedModel bundle at path: /tmp/tmpd6d9h4ux
+2025-12-05 09:21:56.717208: I tensorflow/cc/saved_model/loader.cc:471] SavedModel load for tags { serve }; Status: success: OK. Took 32595 microseconds.
+2025-12-05 09:21:56.728911: I tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.cc:269] disabling MLIR crash reproducer, set env var `MLIR_CRASH_REPRODUCER_DIRECTORY` to enable.
+fully_quantize: 0, inference_type: 6, input_inference_type: UINT8, output_inference_type: INT8
+/home/linzejia/anaconda3/envs/yolotf_new/lib/python3.10/site-packages/tensorflow/lite/python/interpreter.py:457: UserWarning:     Warning: tf.lite.Interpreter is deprecated and is scheduled for deletion in
+    TF 2.20. Please use the LiteRT interpreter from the ai_edge_litert package.
+    See the [migration guide](https://ai.google.dev/edge/litert/migration)
+    for details.
+    
+  warnings.warn(_INTERPRETER_DELETION_WARNING)
+INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+
+✅ Success! Generated toy_multi_branch_int8.tflite
+File size: 20.68 KB
+
+--- Model Details ---
+Input: serving_default_args_0:0, Type: <class 'numpy.uint8'>
+Output 0: StatefulPartitionedCall_1:1, Type: <class 'numpy.int8'>, Scale: 0.00390625, ZP: -128
+Output 1: StatefulPartitionedCall_1:3, Type: <class 'numpy.int8'>, Scale: 0.003631421597674489, ZP: -55
+Output 2: StatefulPartitionedCall_1:0, Type: <class 'numpy.int8'>, Scale: 0.00363010517321527, ZP: -54
+Output 3: StatefulPartitionedCall_1:2, Type: <class 'numpy.int8'>, Scale: 0.00462720450013876, ZP: -128

@@ -41,6 +41,9 @@ from .infra import make_ethosu_binary_elementwise, get_binary_elementwise_args
 @pytest.mark.parametrize("operator_type", ["ADD", "SUB", "MUL", "MIN", "MAX"])
 @pytest.mark.parametrize("activation", ["NONE", "CLIP"])
 def test_binary_elementwise_single(
+    # 确保 TVM 能够正确地将各种二元元素级操作编译成适用于 Ethos-U 硬件的指令序列
+    # 涵盖了实际使用中可能遇到的各种情况，保证了深度学习模型在该硬件上的正确性和性能
+    # 这个pass就是判断在lower到tir之后的参数，步长是否符合硬件规格！
     ifm_shape,
     ifm2_shape,
     ifm_channels,
@@ -53,8 +56,9 @@ def test_binary_elementwise_single(
 ):
     dtype = "int8"
     ifm = relay.var("ifm", shape=ifm_shape, dtype=dtype)
-    ifm2 = relay.var("ifm2", shape=ifm2_shape, dtype=dtype)
-
+    ifm2 = ifm # 测试完全一样输入的共享参数是否可以通过！
+    # ifm2 = relay.var("ifm2", shape=ifm2_shape, dtype=dtype)
+    # 创建一个二元元素级操作节点
     binary_elementwise = make_ethosu_binary_elementwise(
         ifm,
         ifm2,
@@ -69,16 +73,22 @@ def test_binary_elementwise_single(
         ofm_layout,
         rounding_mode,
     )
+    # 将自由变量变为函数的参数？
+    # 自由变量。一般是外部定义，内部使用的，即free_vars 函数用于找出表达式中所有未被绑定的变量，ifm
     func = relay.Function(relay.analysis.free_vars(binary_elementwise), binary_elementwise)
     func = run_opt_pass(func, relay.transform.InferType())
     mod, _ = _lower_to_tir(func)
+    
+    print(mod["main"].script())
+    
+    # 遍历生成的 TIR 语句，提取二元操作的相关参数信息
     data = []
-
     def _visit(stmt):
         if isinstance(stmt, tvm.tir.Call):
             data.append(get_binary_elementwise_args(stmt))
 
     tvm.tir.stmt_functor.post_order_visit(mod["main"].body, _visit)
+    # 计算步长
     if ifm_layout == "NHWC":
         ifm_stride_c = 1
         ifm_stride_w = ifm_shape[3] if ifm_shape[2] != 1 else 1
@@ -111,6 +121,7 @@ def test_binary_elementwise_single(
         ofm_stride_c = 16 * ofm_width
         ofm_stride_h = 16 * ofm_width * ((ifm_channels - 1) // 16 + 1)
 
+    # 构建期望的序列化二元操作对象，包含了所有相关参数
     serial_binary_elementwise = spec.SerialBinaryElementwise(
         ifm=spec.SerialFeatureMap(
             data_type=dtype,
@@ -180,7 +191,7 @@ def test_binary_elementwise_single(
         block_config=spec.SerialBlockConfig(0, 0, 0),
         rescale_config=spec.SerialRescaleConfig(False, 0, 0),
     )
-
+    # 比较实际生成的结果与期望结果是否一致:
     assert data[0] == ["ethosu_binary_elementwise"] + list(serial_binary_elementwise)
 
 

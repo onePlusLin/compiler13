@@ -42,10 +42,10 @@ from .tflite_flexbuffer import FlexBufferDecoder
 
 __all__ = ["from_tflite"]
 
-
+# 可以按照输入和输出裁剪模型
 in_names = []  #暂时只支持一个输入，list为空时使用模型的默认输入
-out_names = ['model/tf_conv/mul_1'] #支持一个或多个输出，list为空时使用模型默认的输出
-# out_names = [] #支持一个或多个输出，list为空时使用模型默认的输出
+# out_names = ['model/tf_conv/mul_1'] #支持一个或多个输出，list为空时使用模型默认的输出
+out_names = [] #支持一个或多个输出，list为空时使用模型默认的输出
 
 
 
@@ -117,6 +117,8 @@ class OperatorConverter(object):
             "GREATER_EQUAL": self.convert_greater_equal,
             "GREATER": self.convert_greater,
             "HARD_SWISH": self.convert_hard_swish,
+            "SILU": self.convert_silu,
+            "SWISH": self.convert_silu,
             "L2_NORMALIZATION": self.convert_l2_normalization,
             "L2_POOL_2D": self.convert_l2_pool2d,
             "LEAKY_RELU": self.convert_leaky_relu,
@@ -1058,6 +1060,30 @@ class OperatorConverter(object):
 
         # Perform hardswish
         out = _hard_swish(in_expr)
+
+        # Go back to integer dataype if the original operator was quantized.
+        if output_tensor.qnn_params:
+            out = self.quantize(out, output_tensor)
+
+        return out
+    
+    def convert_silu(self, op):
+        """Convert TFLite SiLU/Swish"""
+        input_tensors = self.get_input_tensors(op)
+        assert len(input_tensors) == 1, "input tensors length should be 1"
+        input_tensor = input_tensors[0]
+        in_expr = self.get_expr(input_tensor.tensor_idx)
+
+        output_tensors = self.get_output_tensors(op)
+        assert len(output_tensors) == 1, "output tensors length should be 1"
+        output_tensor = output_tensors[0]
+
+        # Dequantize if the input is quantized.
+        if input_tensor.qnn_params:
+            in_expr = self.dequantize(in_expr, input_tensor)
+
+        # Perform silu/swish: x * sigmoid(x)
+        out = in_expr * _op.tensor.sigmoid(in_expr)
 
         # Go back to integer dataype if the original operator was quantized.
         if output_tensor.qnn_params:

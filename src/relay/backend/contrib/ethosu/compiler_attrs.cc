@@ -113,14 +113,14 @@ class EthosUCompilerConfig : public Attrs {
 
 TVM_REGISTER_NODE_TYPE(EthosUCompilerConfigNode);
 TVM_REGISTER_PASS_CONFIG_OPTION("relay.ext.ethos-u.options", EthosUCompilerConfig);
-
+   
 auto GetCompilerAttrs() {
   auto ctx = transform::PassContext::Current();
   auto cfg = ctx->GetConfig<EthosUCompilerConfig>("relay.ext.ethos-u.options");
   if (!cfg.defined()) {
     cfg = AttrsWithDefaultValues<EthosUCompilerConfig>();
-  }
-  return cfg;
+  }   
+  return cfg;   
 }
 TVM_REGISTER_GLOBAL("relay.ext.ethos-u.get_compiler_attrs").set_body_typed(GetCompilerAttrs);
 

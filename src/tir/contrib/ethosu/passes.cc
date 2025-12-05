@@ -65,7 +65,7 @@ namespace tvm {
           struct FlattenUnwrapResult {
             std::vector<Stmt> seq;
             std::vector<Stmt> rewrap_nest;
-            };
+          };
 
           /*! \brief Utility function to flatten SeqStmt
            *
@@ -83,37 +83,41 @@ namespace tvm {
               if (auto* ptr = stmt.as<DeclBufferNode>()) {
                 rewrap_nest.push_back(DeclBuffer(ptr->buffer, Evaluate(0)));
                 flatten_unwrap(ptr->body);
-                }
+              }
               else if (auto* ptr = stmt.as<SeqStmtNode>()) {
                 for (const auto& sub_stmt : ptr->seq) {
                   flatten_unwrap(sub_stmt);
-                  }
                 }
+              }
               else if (auto* ptr = stmt.as<EvaluateNode>(); ptr && ptr->value.as<IntImmNode>()) {
                 // Skip
-                }
+              }
               else {
                 seq_stmt.push_back(stmt);
-                }
+              }
               };
             flatten_unwrap(stmt);
             return FlattenUnwrapResult{ seq_stmt, rewrap_nest };
-            }
+          }
 
           /*! Returns the arguments of the given statement */
           Array<PrimExpr> GetStmtArgs(Stmt stmt) {
+            // 1. 剥洋葱：如果有 DeclBuffer 或 AttrStmt 包装，先剥掉
             while (auto* ptr = stmt.as<DeclBufferNode>()) {
               stmt = ptr->body;
-              }
+            }
 
             auto attr{ stmt.as<AttrStmtNode>() };
             Stmt eval_stmt{ attr ? attr->body : stmt };
+            // 2. 确认是 Evaluate 节点
             auto eval{ eval_stmt.as<EvaluateNode>() };
             ICHECK(eval) << "Expected statement to be an evaluate node, but was " << eval_stmt->GetTypeKey();
+            // 3. 取出里面的 Call 节点
             auto call{ eval->value.as<CallNode>() };
             ICHECK(call) << "Expected expression to be a call node, but was " << eval->value->GetTypeKey();
+            // 4. 返回 Call 节点的 args
             return call->args;
-            }
+          }
 
           enum class StmtType { global_copy, local_copy, compute };
 
@@ -123,30 +127,30 @@ namespace tvm {
             if (args[0].as<StringImmNode>()->value == "ethosu_copy") {
               if (args[3].as<BufferLoadNode>()->buffer.scope() == "global") {
                 return StmtType::global_copy;
-                }
+              }
               else {
                 return StmtType::local_copy;
-                }
               }
-            return StmtType::compute;
             }
+            return StmtType::compute;
+          }
           /*! Returns the buffer read my the given copy statement */
           Buffer GetCopyReadBuffer(const Stmt& stmt) {
             Array<PrimExpr> args{ GetStmtArgs(stmt) };
             return args[1].as<BufferLoadNode>()->buffer;
-            }
+          }
 
           /*! Returns the buffer written by the given copy statement */
           Buffer GetCopyWriteBuffer(const Stmt& stmt) {
             Array<PrimExpr> args{ GetStmtArgs(stmt) };
             return args[3].as<BufferLoadNode>()->buffer;
-            }
+          }
 
           /*! Returns the length of the given copy statement */
           int64_t GetCopyLength(const Stmt& stmt) {
             Array<PrimExpr> args{ GetStmtArgs(stmt) };
             return args[2].as<IntImmNode>()->value;
-            }
+          }
 
           /*! Returns the cycles of the given statement */
           int64_t GetStmtCycles(const Stmt& stmt) {
@@ -154,36 +158,36 @@ namespace tvm {
             if (attr && attr->attr_key == "pragma_compute_cycles_hint") {
               int64_t cycles{ Downcast<Integer>(attr->value)->value };
               return cycles;
-              }
-            return 0;
             }
-          }  // namespace
+            return 0;
+          }
+        }  // namespace
 
-          /*!
-           * \brief This mutator moves allocates to the top of the body of the main
-           * function.
-           *
-           * Note: This pass can currently only be run in conjunction with the
-           * LowerToTIR() pass as it expects a single primitive function called
-           * "main" that is being offloaded to the NPU.
-           *
-           * For example,
-           * Before:
-           *   allocate {
-           *       extern_call(...)
-           *           allocate {
-           *               extern_call(...)
-           *           }
-           *   }
-           *
-           * After:
-           *   allocate {
-           *       allocate {
-           *           extern_call(...)
-           *           extern_call(...)
-           *       }
-           *  }
-           */
+        /*!
+         * \brief This mutator moves allocates to the top of the body of the main
+         * function.
+         *
+         * Note: This pass can currently only be run in conjunction with the
+         * LowerToTIR() pass as it expects a single primitive function called
+         * "main" that is being offloaded to the NPU.
+         *
+         * For example,
+         * Before:
+         *   allocate {
+         *       extern_call(...)
+         *           allocate {
+         *               extern_call(...)
+         *           }
+         *   }
+         *
+         * After:
+         *   allocate {
+         *       allocate {
+         *           extern_call(...)
+         *           extern_call(...)
+         *       }
+         *  }
+         */
         class HoistAllocatesMutator : public StmtExprMutator {
           public:
           HoistAllocatesMutator() {}
@@ -196,27 +200,27 @@ namespace tvm {
               Allocate current_alloc = *it;
               if (it != allocates_.rbegin()) {
                 new_main_func_body = SeqStmt::Flatten(new_main_func_body);
-                }
+              }
               new_main_func_body =
                 Allocate(current_alloc->buffer_var, current_alloc->dtype, current_alloc->extents,
                   current_alloc->condition, new_main_func_body, current_alloc->annotations,
                   current_alloc->span);
-              }
+            }
 
             PrimFunc new_main_func = PrimFunc(main_func->params, new_main_func_body, main_func->ret_type,
               main_func->buffer_map, main_func->attrs);
             return new_main_func;
-            }
+          }
 
           private:
           Stmt VisitStmt_(const AllocateNode* op) override {
             allocates_.push_back(GetRef<Allocate>(op));
             return VisitStmt(op->body);
-            }
+          }
 
           /*! A stack to store allocates as they are visited. */
           std::vector<Allocate> allocates_;
-          };
+        };
 
         /*!
          * \brief A pass to hoist allocate nodes to the top of the body of the main function.
@@ -232,7 +236,7 @@ namespace tvm {
             };
           return tvm::tir::transform::CreatePrimFuncPass(pass_func, 0, "tir.contrib.ethos-u.HoistAllocates",
             {});
-          }
+        }
 
         TVM_REGISTER_GLOBAL("tir.contrib.ethos-u.HoistAllocates").set_body_typed(HoistAllocates);
 
@@ -247,16 +251,16 @@ namespace tvm {
           public:
           explicit CopyComputeReorderingMutator(int max_copy_movements, bool reorder_by_cycles)
             : _max_copy_movements{ max_copy_movements }, _reorder_by_cycles{ reorder_by_cycles } {
-            }
+          }
 
           PrimFunc operator()(PrimFunc main_func) {
             if (_max_copy_movements > 0) {
               auto prim_func_node{ main_func.CopyOnWrite() };
               prim_func_node->body = this->VisitStmt(main_func->body);
               return GetRef<PrimFunc>(prim_func_node);
-              }
-            return main_func;
             }
+            return main_func;
+          }
 
           private:
           // A structure to hold a compute op with the corresponding weights/bias copy and LUT copy
@@ -264,14 +268,14 @@ namespace tvm {
             Stmt compute_op{};
             Stmt global_copy{};
             Stmt local_copy{};
-            };
+          };
 
           Stmt VisitStmt_(const SeqStmtNode* op) override {
             auto [seq, rewrap_nest] = FlattenUnwrap(GetRef<Stmt>(op));
 
             if (seq.size() <= 1) {
               return StmtExprMutator::VisitStmt_(op);
-              }
+            }
 
             std::vector<Stmt> new_seq(seq.begin(), seq.end());
 
@@ -284,7 +288,7 @@ namespace tvm {
                 auto copy_position = stmt_is_global_copy(new_seq[0]) ? 0 : 1;
                 first_copy = new_seq[copy_position];
                 new_seq.erase(new_seq.begin() + copy_position);
-                }
+              }
 
               // Build up a list of cells with the compute op and the copy ops that directly preceed it
               std::vector<OpWithCopies> ops{};
@@ -297,26 +301,26 @@ namespace tvm {
                     if (!stmt_is_compute_op(prev_op)) {
                       if (stmt_is_local_copy(prev_op)) {
                         new_op.local_copy = prev_op;
-                        }
+                      }
                       else {
                         new_op.global_copy = prev_op;
-                        }
+                      }
                       if (idx > 1) {
                         auto prev_prev_op = new_seq[idx - 2];
                         if (!stmt_is_compute_op(prev_prev_op)) {
                           if (stmt_is_local_copy(prev_prev_op)) {
                             new_op.local_copy = prev_prev_op;
-                            }
+                          }
                           else {
                             new_op.global_copy = prev_prev_op;
-                            }
                           }
                         }
                       }
                     }
-                  ops.push_back(new_op);
                   }
+                  ops.push_back(new_op);
                 }
+              }
 
               // Move the global copies up by one. If in general the computes take longer than the copies,
               // that should be good enough
@@ -324,8 +328,8 @@ namespace tvm {
                 if (ops[idx].global_copy.as<AttrStmtNode>()) {
                   ops[idx - 1].global_copy = ops[idx].global_copy;
                   ops[idx].global_copy = {};
-                  }
                 }
+              }
 
               // If there are long copies, try to hide them further
               for (size_t idx = ops.size() - 1; idx > 0; --idx) {
@@ -344,27 +348,27 @@ namespace tvm {
                     compute_cycles += new_compute_cycles;
                     is_hidden = compute_cycles >= copy_cycles;
                     --idx;
-                    }
                   }
                 }
+              }
 
               // Reconstruct the op sequence from the vector of OpWithCopies
               new_seq.clear();
               if (first_copy.as<AttrStmtNode>()) {
                 new_seq.push_back(first_copy);
-                }
+              }
               for (auto& op : ops) {
                 if (op.global_copy.as<AttrStmtNode>()) {
                   new_seq.push_back(op.global_copy);
-                  }
+                }
                 if (op.local_copy.as<EvaluateNode>()) {
                   new_seq.push_back(op.local_copy);
-                  }
+                }
                 if (op.compute_op.as<AttrStmtNode>()) {
                   new_seq.push_back(op.compute_op);
-                  }
                 }
               }
+            }
             else {
               // Each copy statement to a buffer with global scope is moved up
               // at most `_max_copy_movements` times.
@@ -374,13 +378,13 @@ namespace tvm {
                   for (int i = index; i > lower && (GetStmtType(new_seq[i - 1]) == StmtType::compute);
                     --i) {
                     std::swap(new_seq[i - 1], new_seq[i]);
-                    }
                   }
                 }
               }
+            }
 
             return MergeNest(rewrap_nest, SeqStmt::Flatten(new_seq));
-            }
+          }
 
           bool stmt_is_global_copy(const Stmt& stmt) { return GetStmtType(stmt) == StmtType::global_copy; }
 
@@ -392,7 +396,7 @@ namespace tvm {
           int _max_copy_movements;
           /*! Whether we use the cycle hint to determine the reordering. */
           bool _reorder_by_cycles;
-          };
+        };
 
         /*!
          * \brief A pass to reorder copy and compute nodes in such a way that independent DMA copies
@@ -425,7 +429,7 @@ namespace tvm {
             };
           return tvm::tir::transform::CreatePrimFuncPass(pass_func, 0,
             "tir.contrib.ethos-u.CopyComputeReordering", {});
-          }
+        }
 
         TVM_REGISTER_GLOBAL("tir.contrib.ethos-u.CopyComputeReordering")
           .set_body_typed(CopyComputeReordering);
@@ -439,11 +443,11 @@ namespace tvm {
             auto prim_func_node{ main_func.CopyOnWrite() };//写时复制
             prim_func_node->body = this->VisitStmt(main_func->body);
             return GetRef<PrimFunc>(prim_func_node);//创建引用：将修改后的节点包装成新的 PrimFunc 对象
-            }
+          }
 
           private:
           Stmt VisitStmt_(const AllocateNode* op) override { return VisitStmt(op->body); }//直接返回body， effectively 移除了分配节点
-          };
+        };
 
         /*!
          * \brief This extractor collects information used by the MergeConstantsMutator
@@ -460,21 +464,21 @@ namespace tvm {
             std::vector<Optional<Buffer>> copy_write_buffers{};
 
             /*! Maps a copy's write buffer to an index representing the
-             * new buffer and an offset in that buffer */
+             * new buffer and an offset in that buffer 这也是第i条stmt，谁使用，谁冠名” (Consumer-Based Identity) */
             std::unordered_map<const BufferNode*, std::pair<int /* new buffer index */, int /* offset */>>
               old_to_new_write_buffer{};
 
-            /*! Maps an index representing a new buffer to the length of that buffer */
+            /*! Maps an index representing a new buffer to the length of that buffer  index代表的是第i条stmt*/
             std::unordered_map<int /* new buffer index */, int /* length */> new_buffers_length{};
 
-            /*! Maps an index representing a new buffer to the cycless needed to copy that buffer */
+            /*! Maps an index representing a new buffer to the cycless needed to copy that buffer 也是 */
             std::unordered_map<int /* new buffer index */, int64_t> cycless{};
-            };
+          };
 
           Info operator()(PrimFunc main_func) {
             this->VisitStmt(main_func->body);
             return std::move(_info);
-            }
+          }
 
           private:
           /*! The information collected by this extractor */
@@ -483,7 +487,7 @@ namespace tvm {
           void VisitStmt_(const AllocateNode* op) override {
             _info.allocates.push_back(GetRef<Allocate>(op));
             VisitStmt(op->body);
-            }
+          }
 
           void VisitStmt_(const SeqStmtNode* op) override {
             std::vector<Stmt> seq_stmt = FlattenUnwrap(GetRef<Stmt>(op)).seq;//flattern seqstmt node
@@ -491,65 +495,67 @@ namespace tvm {
             if (seq_stmt.size() <= 1) {
               StmtExprVisitor::VisitStmt_(op);
               return;
-              }
+            }
 
             for (size_t i = 0; i < seq_stmt.size(); ++i) {
               Stmt stmt{ seq_stmt[i] };
               switch (GetStmtType(stmt)) {
-                  case StmtType::global_copy: {
-                    Buffer write_buffer{ GetCopyWriteBuffer(stmt) };//返回由copy语句写入的buffer，目标buffer?将stmt的所需的buffer写入write_buffer
+                case StmtType::global_copy: {
+                    Buffer write_buffer{ GetCopyWriteBuffer(stmt) };// 获取copy语句的 write buffer
                     _info.copy_write_buffers.push_back(write_buffer);//将buffer添加到info中
                     _info.old_to_new_write_buffer[write_buffer.as<BufferNode>()] = std::make_pair(-1, -1);//映射旧缓冲区到新缓冲区索引和偏移量
                     break;
-                    }
-                  case StmtType::local_copy: {
+                  }
+                case StmtType::local_copy: {
                     _info.copy_write_buffers.push_back(Optional<Buffer>{});//添加一个空的 Optional 值
                     break;
-                    }
-                  case StmtType::compute: {
-                    _info.copy_write_buffers.push_back(Optional<Buffer>{});//
-                    std::vector<Buffer> buffers{ GetCopiedBuffersUsedByStmt(stmt) };//获取由copy语句写入并被该计算语句使用的所有缓冲区
+                  }
+                case StmtType::compute: {
+                    _info.copy_write_buffers.push_back(Optional<Buffer>{});
+                    std::vector<Buffer> buffers{ GetCopiedBuffersUsedByStmt(stmt) };// 获取compute语句中的，由copy 产生的 write buffer
                     if (buffers.empty()) {
-                      continue;
-                      }
+                      continue;//说明这个语句使用的常数是函数参数，不是copy到sram的
+                    }
                     _info.new_buffers_length[i] = 0;
                     for (Buffer buffer : buffers) {//将旧缓冲区映射到新缓冲区索引和偏移量、长度、周期，那这里是不是只需要删除到只剩下最后一个？
                       for (size_t j{ i - 1 }; j >= 0; --j) {
+                        // 找到前面copy产生的write buffer
                         if (_info.copy_write_buffers[j] == buffer) {//可以在这里添加一个要合并的buffer列表！不知道可能还有其他的判断条件！
                           _info.old_to_new_write_buffer[buffer.as<BufferNode>()] =
                             std::make_pair(i, _info.new_buffers_length[i]);
                           _info.new_buffers_length[i] += GetCopyLength(seq_stmt[j]);//这里会计算所需要的新buffer的总长度
                           _info.cycless[i] += GetStmtCycles(seq_stmt[j]);//总周期
                           break;
-                          }
                         }
                       }
-                    break;
                     }
-                }
+                    break;
+                  }
               }
             }
+          }
 
           /*! Get all buffers written by copies and used by a given statement
-
-          就是遍历语句的参数，如果是bufferload并且是copy的（由前面的global_copy存储的知道），则将buffer添加到buffers中，只添加一次*/
+          buffer：从buffer取值，例如p1_global_1[0]，buffer就是p1_global_1
+          就是遍历语句的参数，如果是bufferload并且是copy的（由前面的global_copy存储的知道），则将buffer添加到buffers中，只添加一次
+          */
           std::vector<Buffer> GetCopiedBuffersUsedByStmt(const Stmt& stmt) {
             std::vector<Buffer> buffers{};
             for (PrimExpr arg : GetStmtArgs(stmt)) {
               if (auto buffer_load = arg.as<BufferLoadNode>()) {
                 Buffer buffer{ buffer_load->buffer };
                 // Check if the buffer has already been added
-                if (std::find(buffers.begin(), buffers.end(), buffer) == buffers.end()) {
+                if (std::find(buffers.begin(), buffers.end(), buffer) == buffers.end()) {//去重
                   // Check if the buffer is copied
                   if (_info.old_to_new_write_buffer.count(buffer.as<BufferNode>())) {
                     buffers.push_back(buffer);
-                    }
                   }
                 }
               }
-            return buffers;
             }
-          };
+            return buffers;
+          }
+        };
 
         /*!
          * \brief This mutator looks for the constants used by each compute operator
@@ -566,28 +572,29 @@ namespace tvm {
              * debug by zejia
              * 打印输出main_func
              */
-            std::cout << " main_func before MergeConstantsMutator: " << std::endl;
-            std::cout << main_func << std::endl;
-            std::cout << "params is :\n " << main_func->params << std::endl;
-            std::cout << "body is :\n " << main_func->body << std::endl;
-            std::cout << "buffer_map is :\n " << main_func->buffer_map << std::endl;
-            std::cout << "attrs is :\n " << main_func->attrs << std::endl;
+
+            VLOG(1) << "main_func before MergeConstantsMutator: " << std::endl
+              << main_func << std::endl
+              << "params is :\n " << main_func->params << std::endl
+              << "body is :\n " << main_func->body << std::endl
+              << "buffer_map is :\n " << main_func->buffer_map << std::endl
+              << "attrs is :\n " << main_func->attrs << std::endl;
 
             // Rewrite
-            // IR 语句和分配结构重写 (Body and Allocation Rewrite)
+            // 重写allocate 语句
             Stmt new_body = RewritePrimFuncBody(main_func->body);
 
-            // 函数签名和 BufferMap 更新 (Signature and BufferMap Update)
+
             std::unordered_set<const VarNode*> params_to_delete{};
-            Map<Var, Buffer> new_buffer_map{ MakeNewBufferMap(main_func->buffer_map, &params_to_delete) };
-            // 基于上一步标记的待删除变量，从函数的原始参数列表中移除这些变量，从而缩减函数的签名
-            Array<Var> new_params{ MakeNewParams(main_func->params, params_to_delete) };
+            Map<Var, Buffer> new_buffer_map{ MakeNewBufferMap(main_func->buffer_map, &params_to_delete) };// 修改bufermap、添加被移除的params
+            Array<Var> new_params{ MakeNewParams(main_func->params, params_to_delete) };// p2_encoded被移除
 
             // Make the new const dict
             // 常量数据合并与过滤 (Physical Data Merging)
-            Array<Array<IntImm>> args_to_merge{ GetArgsToMerge(main_func->buffer_map, main_func->params) };
+            // 获得要合并的参数
+            Array<Array<IntImm>> args_to_merge{ GetArgsToMerge(main_func->buffer_map, main_func->params) };// [[0], [1, 2], [3]]
             Map<IntImm, Array<IntImm>> buffers_to_merge{
-                GetArgsToMergeWithoutArgsNotInConstDict(args_to_merge, const_dict) };//过滤掉不在常量字典中的参数
+                GetArgsToMergeWithoutArgsNotInConstDict(args_to_merge, const_dict) };
             Map<IntImm, runtime::NDArray> new_const_dict{ MakeNewConstDict(buffers_to_merge, const_dict) };
 
             // Make the new prim func
@@ -601,19 +608,19 @@ namespace tvm {
             f = WithAttr(std::move(f), "ethos-u.const_dict", new_const_dict);
 
             return f;
-            }
+          }
 
           private:
           /*! The information collected by the MergeConstantsInfoExtractor */
           MergeConstantsInfoExtractor::Info _info;
 
-          /*! Maps an index representing a new buffer to the new buffer */
+          /*! Maps an index representing a new buffer to the new buffer   在RewritePrimFuncBody这里进行赋值*/
           std::unordered_map<int /* new buffer index */, Buffer> new_buffers{};
 
           /*! Maps a copy's read buffer to the new copy's read buffer */
           std::unordered_map<const BufferNode*, Buffer> old_to_new_read_buffers{};
 
-          /*!将表示新缓冲区的索引映射到要合并到新缓冲区中的缓冲区列表
+          /*! Maps an index representing a new buffer to the list of buffers to be merged in the new buffer
            */
           std::unordered_map<int /* new buffer index */, std::vector<Buffer>> buffers_to_merge{};
 
@@ -623,133 +630,148 @@ namespace tvm {
           Stmt RewritePrimFuncBody(Stmt body) {
             std::unordered_map<const VarNode*, Allocate> var_to_allocate{};
 
-            // Rewrite old allocates 可在这查看为什么哪些是需要被合并的？？？？                   //这里的变量还是源变量？还是函数参数？应该也是源
-            std::unordered_set<const VarNode*> buffer_vars{ GetVarsForWrittenCopyBuffers() };//首先获取所有被copy操作写入的缓冲区变量集合。这些是即将被合并的缓冲区（例如中间特征图、临时变量）
+            // Rewrite old allocates      
+            // 获得copy write 的Var,为后续重写body准备，难道是p1_global_1的p1_global？
+            std::unordered_set<const VarNode*> buffer_vars{ GetVarsForWrittenCopyBuffers() };
             /*
-            debug to print buffer_vars
+            debug to print buffer_vars 输出应该是copy write buffer
             */
             for (auto var : buffer_vars) {
-              std::cout << "buffer_var name_hint: " << var->name_hint << std::endl;
-              }
-
-            for (auto it{ _info.allocates.rbegin() }; it != _info.allocates.rend(); ++it) {//遍历所有记录的分配语句，但注意这里是反向遍历（rbegin 到 rend）
-              Allocate alloc{ *it };// 这是allocate节点
+              VLOG(1) << "buffer_var name_hint: " << var->name_hint << std::endl;
+            }
+            // 反向遍历所有记录的分配语句
+            for (auto it{ _info.allocates.rbegin() }; it != _info.allocates.rend(); ++it) {
+              Allocate alloc{ *it };
+              // 取出alloc的buffer的var映射到var_to_allocate
               var_to_allocate[alloc->buffer_var.get()] = alloc;
-              if (buffer_vars.count(alloc->buffer_var.as<VarNode>()) == 0) {//如果当前分配的缓冲区变量不在要被合并的缓冲区集合中，则保留这个分配语句；否则重写
+              // 如果var不在需要被合并的copy write copy的buffer_vars中，恢复它们的allocate语句
+              if (buffer_vars.count(alloc->buffer_var.as<VarNode>()) == 0) {
                 body = Allocate(alloc->buffer_var, alloc->dtype, alloc->extents, alloc->condition, body,
                   alloc->annotations, alloc->span);
-                }
               }
+            }
 
-            // Rewrite new allocates  负责为那些被跳过的常量缓冲区创建新的、更大的、合并后的分配语句。
+            // Rewrite new allocates  
             for (auto it{ _info.copy_write_buffers.rbegin() }; it != _info.copy_write_buffers.rend(); ++it) {
               if (Optional<Buffer> buffer_opt = *it) {
-                Buffer old_write_buffer{ buffer_opt.value() };//旧buffer值
+                Buffer old_write_buffer{ buffer_opt.value() };
                 int new_buffer_index{
                     _info.old_to_new_write_buffer[old_write_buffer.as<BufferNode>()].first };
 
                 // Check if the allocate has already been created
+                //这里只会记录并为第一个copy write生成new buffer，因为已经记录总长度和周期了，并且allocate只需要声明总长度，copy和compute才需要记录offset！
                 if (new_buffers.count(new_buffer_index) == 0) {
                   BufferNode* new_buffer{ old_write_buffer.CopyOnWrite() };//复制一个新的buffer节点
                   new_buffer->shape = { _info.new_buffers_length[new_buffer_index] };//获取长度（形状，因为展平了）
 
-                  new_buffers[new_buffer_index] = GetRef<Buffer>(new_buffer);//添加到new_buffers映射中
+                  //添加到new_buffers映射中，记录 p2_global_1 = T.Buffer((4752,), "uint8", data=p2_global)？
+                  new_buffers[new_buffer_index] = GetRef<Buffer>(new_buffer);
 
-                  Allocate old_allocate{ var_to_allocate[old_write_buffer->data.get()] };//这一句不知道是干嘛
+                  Allocate old_allocate{ var_to_allocate[old_write_buffer->data.get()] };
                   body = Allocate(new_buffer->data, new_buffer->dtype, new_buffer->shape, tir::const_true(),
                     body, old_allocate->annotations, old_allocate->span);//这里重写了内存分配，但是内部的计算语句还是使用old的
-                  }
                 }
               }
+            }
 
             // Rewrite operators
             return this->VisitStmt(body);
-            }
+          }
 
           Stmt VisitStmt_(const AllocateNode* op) override {
             auto allocate{ CopyOnWrite(op) };
             allocate->body = this->VisitStmt(op->body);
             return Stmt(allocate);
-            }
+          }
 
           Stmt VisitStmt_(const SeqStmtNode* op) override {
             std::vector<Stmt> seq_stmt = FlattenUnwrap(GetRef<Stmt>(op)).seq;
 
             if (seq_stmt.size() <= 1) {
               return StmtExprMutator::VisitStmt_(op);
-              }
+            }
 
             Array<Stmt> new_seq{};
             for (size_t i{ 0 }; i < seq_stmt.size(); ++i) {
               Stmt stmt{ seq_stmt[i] };
 
               switch (GetStmtType(stmt)) {
-                  case StmtType::global_copy: {
-                    Buffer old_write_buffer{ _info.copy_write_buffers[i].value() };
+                case StmtType::global_copy: {
+                    Buffer old_write_buffer{ _info.copy_write_buffers[i].value() };//取global copy的写buffer
                     std::pair<int, int> pair{
-                        _info.old_to_new_write_buffer[old_write_buffer.as<BufferNode>()] };
+                        _info.old_to_new_write_buffer[old_write_buffer.as<BufferNode>()] };//新buffer索引和偏移量
                     int new_buffer_index{ pair.first };
                     int new_buffer_offset{ pair.second };
-                    UpdateBuffersToMergeAndDelete(stmt, new_buffer_index, new_buffer_offset);
+                    UpdateBuffersToMergeAndDelete(stmt, new_buffer_index, new_buffer_offset); //更新buffers_to_merge和buffers_to_delete映射
 
+                    //按照顺序应该是先返回新的copy语句，再移除多余的copy语句！
                     if (!IsCopyToBeDeleted(new_buffer_offset)) {
-                      Optional<PrimExpr> cycless{ GetMergedCycles(new_buffer_index) };
+                      Optional<PrimExpr> cycless{ GetMergedCycles(new_buffer_index) };//计算它的周期
                       new_seq.push_back(MakeNewStmt(
-                        stmt, MakeNewCopyArgs(stmt, old_write_buffer, new_buffer_index), cycless));
-                      }
-                    break;
+                        stmt, MakeNewCopyArgs(stmt, old_write_buffer, new_buffer_index), cycless));//更新参数并添加到new_seq（新的语句列表）
                     }
-                  case StmtType::local_copy: {
+                    break;
+                  }
+                case StmtType::local_copy: {
                     new_seq.push_back(stmt);
                     break;
-                    }
-                  case StmtType::compute: {
-                    new_seq.push_back(MakeNewStmt(stmt, MakeNewComputeArgs(stmt)));
+                  }
+                case StmtType::compute: {
+                    new_seq.push_back(MakeNewStmt(stmt, MakeNewComputeArgs(stmt)));// 要将compute语句的参数更新为使用new buffer和对应的offset！
+                    // 到这里，new buffer,stmt里面使用的write buffer更新完毕
                     break;
-                    }
-                }
+                  }
               }
-            return SeqStmt::Flatten(new_seq);
             }
+            return SeqStmt::Flatten(new_seq);
+          }
 
           /*! Returns the variables of the buffers written by copies */
           std::unordered_set<const VarNode*> GetVarsForWrittenCopyBuffers() {
             std::unordered_set<const VarNode*> buffer_vars{};
+            // 遍历_info.old_to_new_write_buffer映射，匹配copy write buffer，返回其变量（例如，p1_global (变量)）
             std::transform(_info.old_to_new_write_buffer.begin(), _info.old_to_new_write_buffer.end(),
-              std::inserter(buffer_vars, buffer_vars.begin()),//从 _info.old_to_new_write_buffer 映射中提取所有缓冲区变量，并将它们插入到 buffer_vars 集合中
-              [](std::pair<const BufferNode*, std::pair<int, int>> pair) -> const VarNode* {//取出var，它是old buffer
-              std::cout << "pair.first->data.as<VarNode>()->name_hint" << pair.first->data.as<VarNode>()->name_hint << std::endl;//打印data到底是啥？难道是
-              return pair.first->data.as<VarNode>();//获取键（BufferNode*）中的 data 成员，并将其转换为 VarNode*
+              std::inserter(buffer_vars, buffer_vars.begin()),
+              [](std::pair<const BufferNode*, std::pair<int, int>> pair) -> const VarNode* {
+                //打印data到底是啥？难道是Var
+                VLOG(1) << "pair.first->data.as<VarNode>()->name_hint" << pair.first->data.as<VarNode>()->name_hint << std::endl;
+                return pair.first->data.as<VarNode>();//p1_global_1 = T.Buffer((4432,), "uint8", data=p1_global) -- p1_global
               });
             return buffer_vars;
-            }
+          }
 
           /*! Returns the cycles of the new buffer at the given index */
           Optional<PrimExpr> GetMergedCycles(int new_buffer_index) {
             auto it = _info.cycless.find(new_buffer_index);
             if (it != _info.cycless.end()) {
               return Integer(it->second);
-              }
-            return Optional<PrimExpr>{};
             }
+            return Optional<PrimExpr>{};
+          }
 
           /*! Returns true if a copy must be deleted, false otherwise */
           bool IsCopyToBeDeleted(int new_buffer_offset) { return new_buffer_offset > 0; }
-
+          // 更新copy语句的参数
+          /**
+           * 更新copy语句的args:read_address length  write_address（找到前面的newbuffers,对应一个bufferload取其数据到这里！
+           * params:
+           *  old_write_buffer:旧的copy的write buffer
+           *  new_buffer_index:新的copy的buffer索引
+           */
           Array<PrimExpr> MakeNewCopyArgs(const Stmt& stmt, const Buffer& old_write_buffer,
             int new_buffer_index) {
             Array<PrimExpr> args{ GetStmtArgs(stmt) };
-            int new_length{ _info.new_buffers_length[new_buffer_index] };
+            int new_length{ _info.new_buffers_length[new_buffer_index] };//要copy的新的buffer的总长度！
 
             Array<PrimExpr> new_args{};
             for (size_t i = 0; i < args.size(); ++i) {
               switch (i) {
-                  case 1: /* read_address */ {
-                    auto buffer_load = args[1].as<BufferLoadNode>();
+                case 1: /* read_address */ {
+                    auto buffer_load = args[1].as<BufferLoadNode>();//将read buffer 转为bufferloadnode从而可以读取里面的数据！
                     Buffer buffer{ buffer_load->buffer };
                     Buffer new_buffer{ buffer->data,
                                       buffer->dtype,
-                                      {new_length},
+                                      {new_length},//最重要的是总的长度
                                       buffer->strides,
                                       buffer->elem_offset,
                                       buffer->name,
@@ -758,66 +780,84 @@ namespace tvm {
                                       buffer->buffer_type,
                                       buffer->axis_separators,
                                       buffer->span };
-                    old_to_new_read_buffers[buffer.as<BufferNode>()] = new_buffer;
+                    old_to_new_read_buffers[buffer.as<BufferNode>()] = new_buffer;//更新旧buffer和新buffer的映射，方便找到新的buffer语句
                     new_args.push_back(BufferLoad(new_buffer, buffer_load->indices, buffer_load->span));
                     break;
-                    }
-                  case 2: /* length */ {
+                  }
+                case 2: /* length */ {
                     new_args.push_back(new_length);
                     break;
-                    }
-                  case 3: /* write_address */ {
-                    new_args.push_back(MakeNewBufferLoad(old_write_buffer, 0, true).value());
+                  }
+                case 3: /* write_address */ {
+                    new_args.push_back(MakeNewBufferLoad(old_write_buffer, 0, true).value());//重写write buffer，主要会对应上之前rewriteprimfunc中的newbuffer！
                     break;
-                    }
-                  default:
-                    new_args.push_back(args[i]);
-                    break;
-                }
+                  }
+                default:
+                  new_args.push_back(args[i]);
+                  break;
               }
-            return new_args;
             }
+            return new_args;
+          }
 
           Array<PrimExpr> MakeNewComputeArgs(const Stmt& stmt) {
+            // 取出旧stmt的args，里面包含里以前的copy wrire buffer
             Array<PrimExpr> args{ GetStmtArgs(stmt) };
             Array<PrimExpr> new_args{};
             for (size_t i = 0; i < args.size(); ++i) {
-              if (auto buffer_load = args[i].as<BufferLoadNode>()) {
+              //如果 args[i] 成功转换为 BufferLoadNode 类型（转换成功且非空，将结果赋值给 buffer_load ）
+              if (auto buffer_load = args[i].as<BufferLoadNode>()) {// 取出旧的copy write buffer
                 BufferLoad new_buffer_load{
-                    MakeNewBufferLoad(buffer_load->buffer, buffer_load->indices[0], false)
+                    MakeNewBufferLoad(buffer_load->buffer, buffer_load->indices[0], false)// makenewbufferload  函数会自动更新old到new的buffer！
                         .value_or(GetRef<BufferLoad>(buffer_load)) };
                 new_args.push_back(new_buffer_load);
-                }
-              else {
-                new_args.push_back(args[i]);
-                }
               }
-            return new_args;
+              else {
+                new_args.push_back(args[i]);//其他的标量参数
+              }
             }
-
+            return new_args;
+          }
+          /*
+          * 使用new_args和可选的周期值创建一个新的语句，如果要重写一个stmt就得理解这个结构！这对于我没修改那个bug很重要！
+          */
           Stmt MakeNewStmt(const Stmt& stmt, const Array<PrimExpr>& new_args,
             Optional<PrimExpr> cycless = Optional<PrimExpr>{}) {
             auto attr{ stmt.as<AttrStmtNode>() };
             Stmt eval_stmt{ attr ? attr->body : stmt };
+
+            // 确保剩下的是一个 Evaluate 节点 (TIR 中用于执行表达式的语句)
             auto eval{ eval_stmt.as<EvaluateNode>() };
             ICHECK(eval) << "Expected statement to be an evaluate node, but was "
               << eval_stmt->GetTypeKey();
+
+            // 确保 Evaluate 里面是一个 Call 节点 (实际的函数调用，如 ethosu_copy)
             auto call{ eval->value.as<CallNode>() };
             ICHECK(call) << "Expected expression to be a call node, but was " << eval->value->GetTypeKey();
 
+            // 创建一个新的 Call 节点，使用新的参数
             Call new_call{ call->dtype, call->op, new_args, call->span };
+            // 把新的 Call 包裹进新的 Evaluate 节点
             Evaluate new_eval{ new_call, eval->span };
 
             if (attr) {
               ICHECK(attr->attr_key == "pragma_compute_cycles_hint");
               PrimExpr value = cycless.value_or(attr->value);
               return AttrStmt{ attr->node, attr->attr_key, value, new_eval, attr->span };
-              }
-            else {
-              return std::move(new_eval);
-              }
             }
+            else {
+              // 如果没有属性包装，直接返回 Evaluate 节点
+              return std::move(new_eval);
+            }
+          }
 
+          /**
+           * 利用旧的write buffer，通过old_to_new_write_buffer,来取得新的new buffer,最后创造对应的bufferload!
+           * params:
+           *  write_buffer:旧的copy的write buffer
+           *  old_index:旧的copy的index
+           *  only_old_index:是否只使用旧的index
+           */
           Optional<BufferLoad> MakeNewBufferLoad(const Buffer& write_buffer, const PrimExpr& old_index,
             bool only_old_index) {
             auto it = _info.old_to_new_write_buffer.find(write_buffer.as<BufferNode>());
@@ -825,13 +865,15 @@ namespace tvm {
               std::pair<int, int> pair{ it->second };
               int new_buffer_index{ pair.first };
               PrimExpr new_index{ only_old_index ? old_index : (pair.second + old_index) };
+              //从前面rewiteprimfunc的新buffer变量里创造一个bufferload，例如p2_global_1[0]
               return BufferLoad{ new_buffers[new_buffer_index], {new_index} };
-              }
-            return Optional<BufferLoad>{};
             }
+            return Optional<BufferLoad>{};
+          }
           /**
            *buffer_map:是函数params与buffer的映射，可以直接打印
            这里应该是要删除params中的会被合并的params
+           并更新buffer_map
            */
           Map<tir::Var, Buffer> MakeNewBufferMap(const Map<tir::Var, Buffer>& buffer_map,
             std::unordered_set<const VarNode*>* params_to_delete) {
@@ -840,22 +882,27 @@ namespace tvm {
             for (std::pair<Var, Buffer> pair : buffer_map) {
               Var var{ pair.first };
               Buffer buffer{ pair.second };
-
-              if (buffers_to_delete.count(buffer.as<BufferNode>()) == 1) {//这个buffers_to_delete是哪里进行的赋值？
+              // 移除被合并后剩下的buffer的read buffer，恰好就是params!
+              if (buffers_to_delete.count(buffer.as<BufferNode>()) == 1) {//在rewiteprimfunc的时候会遍历，之后对global copy 进行UpdateBuffersToMergeAndDelete
+                // p2_encoded
+                VLOG(1) << "buffers_to_delete's var name_hint: " << var->name_hint << std::endl;
                 params_to_delete->insert(var.as<VarNode>());
-                }
-              else if (old_to_new_read_buffers.count(buffer.as<BufferNode>()) == 1) {//这个最开始也是空的
-                new_buffer_map.Set(var, old_to_new_read_buffers[buffer.as<BufferNode>()]);//更新映射的新buffer，前面被合并的params被删除了
-                std::cout << "updated buffer var name_hint: " << var->name_hint << std::endl;
-                std::cout << "updated buffer var name_hint: " << old_to_new_read_buffers[buffer.as<BufferNode>()]->name << std::endl;
-                }
-              else {
-                new_buffer_map.Set(var, buffer);//
-                }
               }
+              //和上面一样在遍历的时候，MakeNewCopyArgs这里更新,记录的是旧的read buffer和新的read buffer
+              else if (old_to_new_read_buffers.count(buffer.as<BufferNode>()) == 1) {
+
+                new_buffer_map.Set(var, old_to_new_read_buffers[buffer.as<BufferNode>()]);// {p1: p1_encoded，虽然名字还是一样，但是里面的长度改变了
+                VLOG(1) << "updated buffer var name_hint: " << buffer->name << std::endl;
+                VLOG(1) << "updated buffer var name_hint: " << old_to_new_read_buffers[buffer.as<BufferNode>()]->name << std::endl;
+              }
+              else {
+                VLOG(1) << "被保留的 var name_hint: " << var->name_hint << std::endl;
+                new_buffer_map.Set(var, buffer);
+              }
+            }
 
             return new_buffer_map;
-            }
+          }
 
           Array<tir::Var> MakeNewParams(const Array<tir::Var>& params,
             const std::unordered_set<const VarNode*>& params_to_delete) {
@@ -863,98 +910,117 @@ namespace tvm {
             for (Var var : params) {
               if (params_to_delete.count(var.as<VarNode>()) == 0) {
                 new_params.push_back(var);
-                }
               }
-            return new_params;
             }
-
-          void UpdateBuffersToMergeAndDelete(const Stmt& stmt, int new_buffer_index,
-            int new_buffer_offset) {
+            return new_params;
+          }
+          //更新 buffers_to_merge 被合并的buffers，是old to new的次之（newinde应该确定很多old）
+          //更新 buffers_to_delete 被删除的buffer，如果offset大于0，则说明这个常量是被“追加”到别人后面的，需要删除
+          void UpdateBuffersToMergeAndDelete(const Stmt& stmt, int new_buffer_index, int new_buffer_offset) {
             Array<PrimExpr> args{ GetStmtArgs(stmt) };
-            Buffer read_buffer{ GetCopyReadBuffer(stmt) };
+            Buffer read_buffer{ GetCopyReadBuffer(stmt) };//因为write buffer,会使用新的allocate buffer和copy的时候会使用这个大的合并后的buffer，所以这里需要删除和合并的是read buffer
+            VLOG(1) << "read buffer name_hint: " << read_buffer->name << std::endl;
 
             if (buffers_to_merge.count(new_buffer_index) == 0) {
-              buffers_to_merge[new_buffer_index] = std::vector<Buffer>{ read_buffer };
-              }
-            else {
-              buffers_to_merge[new_buffer_index].push_back(read_buffer);
-              }
-
-            if (new_buffer_offset > 0) {
-              buffers_to_delete.insert(read_buffer.as<BufferNode>());
-              }
+              buffers_to_merge[new_buffer_index] = std::vector<Buffer>{ read_buffer };// buffers_to_merge[p2] = {p1_encode,}，同时删除了这个buffermap
             }
+            else {//加入要被合并的buffer（old的)read_buffer vector里面
+              buffers_to_merge[new_buffer_index].push_back(read_buffer);// buffers_to_merge[p2] = {p1_encode,p2_encode}
+            }
+            // 如果 offset大于0，则说明这个常量是被“追加”到别人后面的，需要被移除
+            if (new_buffer_offset > 0) {
+              buffers_to_delete.insert(read_buffer.as<BufferNode>());//buffers_to_delete = {p2_encode}
+            }
+          }
 
           /*! Returns an array whose elements are the indices of the function arguments to be merged.
            * Example: if a function has three arguments and the second and the third ones must
-           * be merged then the array is: [[0], [1, 2], [3]] */
+           * be merged then the array is: [[0], [1, 2], [3]]
+           * 弄清楚哪些原始参数（Parameters）应该被“打包”成同一个二进制块。*/
           Array<Array<IntImm>> GetArgsToMerge(const Map<Var, Buffer>& buffer_map,
             const Array<Var>& params) {
+
+            // 翻转buffer_map为buffer_to_var,方便后续取对应buffer的Var
             std::unordered_map<const BufferNode*, Var> buffer_to_var{};
             for (std::pair<Var, Buffer> var_buffer : buffer_map) {
               buffer_to_var[var_buffer.second.as<BufferNode>()] = var_buffer.first;
-              }
+            }
 
+            // 建立 Var -> Index (0, 1, 2...) 的映射
             std::unordered_map<const VarNode*, int> var_to_index{};
             for (int i = 0; i < static_cast<int>(params.size()); ++i) {
               var_to_index[params[i].as<VarNode>()] = i;
-              }
+            }
 
             std::vector<Array<IntImm>> vector{};
+            // {p2:{p1_encode,p2_encode},,,,}
             for (std::pair<int, std::vector<Buffer>> index_vector : buffers_to_merge) {
               std::vector<IntImm> indices{};
               for (Buffer buffer : index_vector.second) {
+                // 找到 （要合并的buffer）的var:p1,p2
                 const VarNode* var{ buffer_to_var[buffer.as<BufferNode>()].as<VarNode>() };
+                // 找到 （要合并的buffer）的index，并且只加入一个
                 IntImm index{ DataType::Int(64), var_to_index[var] };
+                // !!! 关键 !!! 从待处理名单中移除，表示“已归档”
                 var_to_index.erase(var);
+                // 添加到当前分组 indices[1,2]
                 auto it = std::find_if(indices.begin(), indices.end(),
                   [&](IntImm value) { return value->value == index->value; });
                 if (it == indices.end()) {
                   indices.push_back(index);
-                  }
                 }
-              vector.push_back(Array<IntImm>{indices});
               }
-
-            for (std::pair<const VarNode*, int> var_index : var_to_index) {
-              vector.push_back(Array<IntImm>{IntImm(DataType::Int(64), var_index.second)});
-              }
-            std::sort(vector.begin(), vector.end(),
-              [](Array<IntImm> a, Array<IntImm> b) { return a[0]->value < b[0]->value; });
-            return vector;
+              vector.push_back(Array<IntImm>{indices});// {{1,2},,,,,}
             }
 
+            // 处理【剩余参数】(未参与合并的，如 input, output, LUT) [[1, 2], [0], [3]]
+            for (std::pair<const VarNode*, int> var_index : var_to_index) {
+              vector.push_back(Array<IntImm>{IntImm(DataType::Int(64), var_index.second)});
+            }
+            std::sort(vector.begin(), vector.end(),//按value升序排序 [[0], [1, 2], [3]]
+              [](Array<IntImm> a, Array<IntImm> b) { return a[0]->value < b[0]->value; });
+            return vector;
+          }
+
+          // 剔除那些不在常量字典 (const_dict) 中的参数分组
           Map<IntImm, Array<IntImm>> GetArgsToMergeWithoutArgsNotInConstDict(
             const Array<Array<IntImm>>& args_to_merge, const Map<IntImm, runtime::NDArray>& const_dict) {
+
             Map<IntImm, Array<IntImm>> new_args_to_merge{};
             bool first_arg_found = false;
             int64_t new_arg_key = 0;  // the updated key of the merged const_dict
+            // 遍历每一个分组
             for (Array<IntImm> args : args_to_merge) {
+              // 取分组的第一个索引
               IntImm key{ args[0] };
+              // 在 const_dict 中查找这个索引是否存在？
               auto it = std::find_if(const_dict.begin(), const_dict.end(),
                 [&](std::pair<tvm::IntImm, runtime::NDArray> pair) {
-                return pair.first->value == key->value;
+                  return pair.first->value == key->value;
                 });
+              // --- 如果存在 (说明它是需要被合并的const_dict) ---
               if (it != const_dict.end()) {
+
                 if (first_arg_found == false) {
                   first_arg_found = true;
                   new_arg_key = key->value;
-                  }
-                new_args_to_merge.Set(IntImm(DataType::Int(64), new_arg_key), args);
                 }
+                new_args_to_merge.Set(IntImm(DataType::Int(64), new_arg_key), args);
+              }
               if (first_arg_found) {
                 new_arg_key++;
-                }
               }
-            return new_args_to_merge;
             }
+            return new_args_to_merge;
+          }
 
+          // 更新const_dict:将参数的变量数组合并（依据前面的args_to_merge,获得要合并的args）
           Map<IntImm, runtime::NDArray> MakeNewConstDict(const Map<IntImm, Array<IntImm>>& args_to_merge,
             Map<IntImm, runtime::NDArray> const_dict) {
             Map<IntImm, runtime::NDArray> new_const_dict{};
             if (args_to_merge.size() == 0) {
               return new_const_dict;
-              }
+            }
 
             for (auto const& elem : args_to_merge) {
               IntImm key = elem.first;
@@ -962,12 +1028,12 @@ namespace tvm {
               int64_t size = 0;
               for (IntImm arg : args) {
                 auto it = std::find_if(const_dict.begin(), const_dict.end(),
-                  [&](auto pair) { return pair.first->value == arg->value; });
+                  [&](auto pair) { return pair.first->value == arg->value; });// 在arg里找到合并的，将他们对应的const_dict的值加起来
                 runtime::NDArray arg_constant{ (*it).second };
                 size += runtime::GetDataSize(*arg_constant.operator->());
-                }
+              }
 
-              runtime::NDArray constant = runtime::NDArray::Empty({ size }, DataType::UInt(8), { kDLCPU, 0 });
+              runtime::NDArray constant = runtime::NDArray::Empty({ size }, DataType::UInt(8), { kDLCPU, 0 });// 创造一个合并后的size的数组
 
               size_t offset = 0;
               for (IntImm arg : args) {
@@ -975,14 +1041,14 @@ namespace tvm {
                   [&](auto pair) { return pair.first->value == arg->value; });
                 runtime::NDArray arg_constant{ (*it).second };
                 size_t nbytes = runtime::GetDataSize(*arg_constant.operator->());
-                arg_constant.CopyToBytes(static_cast<uint8_t*>(constant->data) + offset, nbytes);
+                arg_constant.CopyToBytes(static_cast<uint8_t*>(constant->data) + offset, nbytes);// 将旧数据复制到 新数组的 data指针 + offset 的位置
                 offset += nbytes;
-                }
-              new_const_dict.Set(key, constant);
               }
-            return new_const_dict;
+              new_const_dict.Set(key, constant);//移动偏移量，为下一个数据腾出位置
             }
-          };
+            return new_const_dict;
+          }
+        };
 
         /*!
          * \brief This pass looks for the constants used by each compute operator
@@ -1005,7 +1071,7 @@ namespace tvm {
             };
           return tvm::tir::transform::CreatePrimFuncPass(pass_func, 0, "tir.contrib.ethos-u.MergeConstants",
             {});
-          }
+        }
 
         TVM_REGISTER_GLOBAL("tir.contrib.ethos-u.MergeConstants").set_body_typed(MergeConstants);
 
@@ -1019,8 +1085,8 @@ namespace tvm {
 
           PrimFunc operator()(PrimFunc main_func) {
             return WithoutAttr(std::move(main_func), "ethos-u.const_dict");
-            }
-          };
+          }
+        };
 
         tvm::transform::Pass RemoveConstDictAttribute() {
           auto pass_func = [=](PrimFunc f, IRModule mod, tvm::transform::PassContext ctx) {
@@ -1028,21 +1094,21 @@ namespace tvm {
             };
           return tvm::tir::transform::CreatePrimFuncPass(
             pass_func, 0, "tir.contrib.ethos-u.RemoveConstDictAttribute", {});
-          }
+        }
 
         TVM_REGISTER_GLOBAL("tir.contrib.ethos-u.RemoveConstDictAttribute")
           .set_body_typed(RemoveConstDictAttribute);
 
-        }  // namespace ethosu
-      }  // namespace contrib
-    }  // namespace tir
-  }  // namespace tvm
+      }  // namespace ethosu
+    }  // namespace contrib
+  }  // namespace tir
+}  // namespace tvm
 
 
-  /***
-   * 需要加一个pass就是在执行
-   *
-   *
-   *
-   *
-   */
+/***
+ * 需要加一个pass就是在执行
+ *
+ *
+ *
+ *
+ */
