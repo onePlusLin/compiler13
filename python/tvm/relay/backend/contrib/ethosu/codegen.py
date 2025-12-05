@@ -133,7 +133,7 @@ class OptimizeLUTs(ExprMutator):
                 and call.op.name == "contrib.ethosu.identity"
                 and call.attrs.activation in lut_activations
             ):
-                # form mao
+                # from mao
                 if 0:
                     # Check the producer doesn't already have a LUT
                     has_lut = producer_op.attrs.activation in lut_activations
